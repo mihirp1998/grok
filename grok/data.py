@@ -14,7 +14,8 @@ from sympy.combinatorics.permutations import Permutation
 from mod import Mod
 
 import blobfile as bf
-
+import ipdb
+st = ipdb.set_trace
 
 VALID_OPERATORS = {
     "+": "addition",
@@ -89,10 +90,11 @@ class ArithmeticTokenizer:
         :param obj: the string or list of strings to convert
         :returns: a tensor of the token ids
         """
+        # st()
         if isinstance(obj, str):
             return self._encode(obj)
         elif isinstance(obj, list):
-            return torch.stack([self._encode(s) for s in obj], dim=0)
+            return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
         else:
             raise NotImplementedError
 
@@ -154,8 +156,9 @@ class ArithmeticDataset:
 
         assert (0 < train_pct) and (train_pct < 100)
 
+
         ds_name = cls.get_dsname(operator, operand_length)
-        eqs = cls.make_data(operator, operand_length)
+        eqs = cls.make_data(operator, operand_length)        
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
 
@@ -177,6 +180,7 @@ class ArithmeticDataset:
         self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
         self.train = train
+        # st()
         if isinstance(data, list):
             self.data = self.tokenizer.encode(data)
         else:
@@ -218,6 +222,7 @@ class ArithmeticDataset:
         #     print("elems", list(elems))
         #     print("tuples", list(tuples))
         eqs = []
+        # st()
         for a, b in tuples:
             if operator == "/":
                 if b == 0:
@@ -226,7 +231,8 @@ class ArithmeticDataset:
                     c = a
                     a = (b * c) % MODULUS
             elif operator == "s5":
-                c = b[a]
+                st()
+                c = a * b
             elif operator == "s5conj":
                 c = a * b * (a.__invert__())
             elif operator == "s5aba":
@@ -248,7 +254,10 @@ class ArithmeticDataset:
             else:
                 c = eval(f"({a} {operator} {b}) % {MODULUS}")
             eq = " ".join(map(render, [a, operator, b, "=", c]))
-            eqs.append(eq)
+            invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
+            # st()
+            eqs.append([eq,invert_eq])
+            
 
         # if operator == "s5":
         #     print("eqs", eqs)
@@ -336,12 +345,14 @@ class ArithmeticDataset:
     def make_data(cls, operator, operands=None, shuffle=True, seed=0) -> List[str]:
         operator, noise_level = cls._get_operator_and_noise_level(operator)
         assert operator in VALID_OPERATORS
-
+        
+        
         if operator not in ["sort", "reverse", "copy"]:
             data = cls._make_binary_operation_data(operator)
         else:
+            # st()
             data = cls._make_unary_operation_data(operator, operands)
-
+        
         rng = np.random.RandomState(seed=seed)
         if shuffle:
             rng.shuffle(data)
@@ -354,8 +365,8 @@ class ArithmeticDataset:
             for i in range(noise_level):
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
 
-        data = [EOS_TOKEN + " " + eq + " " + EOS_TOKEN for eq in data]
-
+        data = [[EOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,EOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
+        # st()
         return data
 
     # @classmethod
@@ -466,8 +477,9 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
             self.reset_iteration()
             raise StopIteration
         indices = self.permutation[batch_begin : batch_begin + self.batchsize]
-        text = self.dataset.data[indices, :-1]
-        target = self.dataset.data[indices, 1:]
+        # st()
+        text = self.dataset.data[indices,:, :-1]
+        target = self.dataset.data[indices,:, 1:]
         batch = {"text": text.to(self.device), "target": target.to(self.device)}
         self.index += 1
         return batch

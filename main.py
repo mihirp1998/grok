@@ -2,6 +2,7 @@
 import hydra
 from omegaconf import DictConfig
 import ipdb
+import wandb
 st = ipdb.set_trace
 import grok
 import os
@@ -15,8 +16,8 @@ import os
 
 @hydra.main(config_path="config", config_name="config")
 def main(args: DictConfig):
+    wandb.login(key='899662853ead8246d39f962194401e222ad8517a')
     print(args)
-    st()
     args.logdir = os.path.abspath(args.logdir)
     args.datadir = os.path.abspath(args.datadir)
     grok.training.train(args)

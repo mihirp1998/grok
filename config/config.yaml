@@ -1,0 +1,43 @@
+defaults:
+  - _self_  # Override values within this file with values in selected files.
+  - override hydra/hydra_logging: disabled  
+  - override hydra/job_logging: disabled 
+debug: False
+random_seed: -1
+embed_style: same
+gpu: 0
+max_epochs: 1000000
+max_steps: 100000
+batchsize: 0
+n_layers: 2
+n_heads: 4
+d_model: 128
+dropout: 0.0
+weight_noise: 0.0
+non_linearity: "relu"
+max_context_len: 50
+math_operator: "+"
+operand_length: 1
+train_data_pct: 5
+warmup_steps: 10
+anneal_lr_steps: 100000
+forward_forward_mode: False
+reverse_mode: False
+anneal_lr: False
+max_lr: 1e-3
+weight_decay: 0
+weight_decay_kind: to_zero
+noise_factor: 0
+save_activations: False
+save_outputs: False
+logdir: logs
+datadir: data
+d_key: -1
+checkpoint_path: None
+
+
+
+hydra:  
+  output_subdir: null  
+  run:  
+    dir: .

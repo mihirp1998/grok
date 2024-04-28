@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser, Namespace
 from typing import Tuple, List, Dict, Union
-
+import ipdb
+st = ipdb.set_trace
 import numpy as np
 import torch
 import torch.nn as nn
@@ -267,6 +268,9 @@ class Decoder(nn.Module):
         a = x
         attentions = []
         values = []
+        # ipdb> print(x.shape)
+        # torch.Size([8939, 6, 128])        
+        # st()
         for block in self.blocks:
             a, layer_attentions, layer_values = block(
                 a, self_attn_mask, save_activations=save_activations
@@ -275,6 +279,27 @@ class Decoder(nn.Module):
                 attentions.append(layer_attentions)
                 values.append(layer_values)
         return a, attentions, values
+
+    def reverse(
+        self,
+        x: Tensor,
+        self_attn_mask: Tensor = None,
+        save_activations=False,
+    ) -> Tuple[Tensor, List[List[Tensor]], List[List[Tensor]]]:
+
+        a = x
+        attentions = []
+        values = []
+        # st()
+        for block in self.blocks[::-1]:
+            a, layer_attentions, layer_values = block(
+                a, self_attn_mask, save_activations=save_activations
+            )
+            if save_activations:
+                attentions.append(layer_attentions)
+                values.append(layer_values)
+        return a, attentions, values
+
 
 
 class Transformer(nn.Module):
@@ -286,6 +311,7 @@ class Transformer(nn.Module):
         dropout: float = 0.1,
         max_context_len: int = 1024,
         vocab_len: int = 2000,
+        embed_style: str = "same",
         non_linearity: str = "relu",
         weight_noise: float = 0.0,
     ) -> None:
@@ -297,10 +323,21 @@ class Transformer(nn.Module):
         self.dropout = dropout
         self.max_context_len = max_context_len
         self.non_linearity = non_linearity
+        self.embed_style = embed_style
 
         self.vocab_len = vocab_len
 
-        self.embedding = Embedding(vocab_len, d_model, weight_noise=weight_noise)  # type: ignore
+        if embed_style == "seperate":
+            self.embedding = Embedding(vocab_len, d_model, weight_noise=weight_noise)  # type: ignore
+            self.embedding_reverse = Embedding(vocab_len, d_model, weight_noise=weight_noise)  # type: ignore
+            self.linear_reverse = Linear(d_model, vocab_len, bias=False, weight_noise=weight_noise)
+            self.linear = Linear(d_model, vocab_len, bias=False, weight_noise=weight_noise)
+        else:
+            self.embedding = Embedding(vocab_len, d_model, weight_noise=weight_noise)  # type: ignore
+            self.linear = Linear(d_model, vocab_len, bias=False, weight_noise=weight_noise)
+        
+        self.modality_embed = nn.Embedding(embedding_dim=1, num_embeddings=2)
+        
         self.register_buffer(
             "position_encoding", self._position_encoding(max_context_len, d_model)
         )
@@ -315,7 +352,7 @@ class Transformer(nn.Module):
             weight_noise=weight_noise,
         )
 
-        self.linear = Linear(d_model, vocab_len, bias=False, weight_noise=weight_noise)
+        
 
     @staticmethod
     def make_mask(context_len: int) -> Tensor:
@@ -341,15 +378,26 @@ class Transformer(nn.Module):
     def embed(self, indices: Tensor) -> Tensor:
         context_len = indices.shape[-1]
         pe = self.position_encoding[:context_len, :]  # type: ignore
+        embedded = self.embedding(indices)        
+        return pe + embedded
 
-        embedded = self.embedding(indices)
+    def embed_transpose(self, indices: Tensor) -> Tensor:
+        context_len = indices.shape[-1]
+        pe = self.position_encoding[:context_len, :]  # type: ignore
+        embedded = torch.nn.functional.one_hot(indices,self.embedding.weight.shape[0]).float() @ self.linear.weight
+        return pe + embedded
 
+    def embed_seperate(self, indices: Tensor) -> Tensor:
+        context_len = indices.shape[-1]
+        pe = self.position_encoding[:context_len, :]  # type: ignore
+        embedded = self.embedding_reverse(indices)
         return pe + embedded
 
     def forward(
         self,
         x: Tensor,
         pos: int = None,
+        inverse_mapping=False,
         save_activations: bool = False,
     ) -> Tuple[Tensor, Union[Tensor, None], Union[Tensor, None]]:
         """parameters:
@@ -358,7 +406,8 @@ class Transformer(nn.Module):
 
         # Make sure sampling inputs are on the correct device
         x = x.to(self.embedding.weight.device)
-
+        
+        # st()
         # make_attention mask
         this_max_context_len = x.shape[-1]
         self_attn_mask = self.self_attn_mask[  # type: ignore
@@ -366,8 +415,95 @@ class Transformer(nn.Module):
         ]
 
         # Decode
-        x = self.embed(x)
+        if inverse_mapping:
+            # st()
+            if self.embed_style == "same":
+                x = self.embed(x)
+            elif self.embed_style == "seperate":
+                x = self.embed_seperate(x)
+            elif self.embed_style == "transpose":
+                x = self.embed_transpose(x)
+            else:
+                assert False
+        else:
+            # st()
+            x = self.embed(x)
+
+
+            
+        
+        if inverse_mapping:
+            x = x + self.modality_embed(torch.tensor([1]).to(x.device))
+        else:
+            x = x + self.modality_embed(torch.tensor([0]).to(x.device))
+        
         decoded, attentions, values = self.decoder(
+            x, self_attn_mask, save_activations=save_activations
+        )
+        # st()
+
+        # Return predictions for specific token
+        if pos is not None:
+            decoded = decoded[:, pos, :]
+
+
+        if inverse_mapping:
+            # st()
+            if self.embed_style == "same":
+                y_hat = self.linear(decoded)
+            elif self.embed_style == "seperate":
+                y_hat = self.linear_reverse(decoded)
+            elif self.embed_style == "transpose":
+                y_hat = decoded @ self.embedding.weight.T
+            else:
+                assert False            
+        else:
+            y_hat = self.linear(decoded)
+                    
+        return y_hat, attentions, values
+
+
+
+
+    def reverse(
+        self,
+        x: Tensor,
+        pos: int = None,
+        inverse_mapping: bool = True,
+        save_activations: bool = False,
+    ) -> Tuple[Tensor, Union[Tensor, None], Union[Tensor, None]]:
+        """parameters:
+        x:  (rank-1 tensor) vocab indices of decoder input token
+                     sequence"""
+
+        # Make sure sampling inputs are on the correct device
+        x = x.to(self.embedding.weight.device)
+        
+        # st()
+        # make_attention mask
+        this_max_context_len = x.shape[-1]
+        self_attn_mask = self.self_attn_mask[  # type: ignore
+            :this_max_context_len, :this_max_context_len
+        ]
+
+        # st()
+        # Decode
+        if self.embed_style == "same":
+            x = self.embed(x)
+        elif self.embed_style == "seperate":
+            x = self.embed_seperate(x)
+        elif self.embed_style == "transpose":
+            x = self.embed_transpose(x)
+        else:
+            assert False
+        
+        if inverse_mapping:
+            x = x + self.modality_embed(torch.tensor([1]).to(x.device))
+        else:
+            x = x + self.modality_embed(torch.tensor([0]).to(x.device))
+            
+        
+        decoded, attentions, values = self.decoder.reverse(
             x, self_attn_mask, save_activations=save_activations
         )
 
@@ -375,5 +511,13 @@ class Transformer(nn.Module):
         if pos is not None:
             decoded = decoded[:, pos, :]
 
-        y_hat = self.linear(decoded)
+        if self.embed_style == "same":
+            y_hat = self.linear(decoded)
+        elif self.embed_style == "seperate":
+            y_hat = self.linear_reverse(decoded)
+        elif self.embed_style == "transpose":
+            y_hat = decoded @ self.embedding.weight.T
+        else:
+            assert False
+        
         return y_hat, attentions, values
