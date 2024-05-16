@@ -1,13 +1,13 @@
 defaults:
-  - exp: ff
   - _self_  # Override values within this file with values in selected files.
+  - exp: ff
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
-debug: True
+debug: False
 random_seed: -1
 embed_style: seperate
 gpu: 0
-max_epochs: 10 # 1000000
+max_epochs: 100 # 1000000
 max_steps: 100 # 000
 batchsize: 0
 n_layers: 2

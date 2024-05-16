@@ -1,2 +1,3 @@
 # @package _global_
 semi_mid_reverse_mode: True
+mode: smr

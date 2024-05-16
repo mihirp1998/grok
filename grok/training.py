@@ -3,6 +3,7 @@
 import argparse
 import copy
 import json
+import pandas as pd
 import logging
 import math
 import os
@@ -907,7 +908,15 @@ def train(hparams: Namespace) -> None:
     with open(bounds_file, "w") as fh:
         json.dump(bounds, fh)
     """
-    st()
+    val_df = pd.DataFrame(model.trainer_step_val_dict).transpose()
+    # make 0th col name steps
+    val_df.index.name = "steps"
+    csv_folder = os.path.join(hparams.logdir, hparams.group)
+    os.makedirs(csv_folder, exist_ok=True)
+    csv_folder = os.path.join(csv_folder, f'op_{hparams.math_operator}')
+    os.makedirs(csv_folder, exist_ok=True)
+    csv_path = os.path.join(csv_folder, f'val_{hparams.mode}.csv')
+    val_df.to_csv(csv_path)
     return hparams.logdir
 
 
