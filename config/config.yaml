@@ -9,9 +9,9 @@ gpu: 0
 max_epochs: 1000000
 max_steps: 100000
 batchsize: 0
-n_layers: 6
-n_heads: 1
-d_model: 32
+n_layers: 2
+n_heads: 4
+d_model: 128
 dropout: 0.0
 weight_noise: 0.0
 non_linearity: "relu"

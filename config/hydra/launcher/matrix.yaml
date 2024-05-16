@@ -2,14 +2,14 @@ defaults:
   - submitit_slurm
 signal_delay_s: 120
 timeout_min: 360
-partition: all
+partition: all,kate_reserved
 gres: gpu:1
 cpus_per_task: 4
 mem_gb: 30
 nodes: 1
-# constraint: A5000|rtx6000|rtx2080ti
+# constraint: volta|A100|A5500|6000ADA
 max_num_timeout: 100
 # additional_parameters: {'nodelist':'matrix-1-22,matrix-0-36'}
-exclude: matrix-0-22
+# exclude: matrix-0-22,matrix-1-12
 submitit_folder: out_slurm
-name: inverse
+name: testm

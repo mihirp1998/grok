@@ -3,6 +3,7 @@ import math
 import os
 import sys
 import random
+# import primefac
 
 import torch
 from torch import Tensor, LongTensor
@@ -35,6 +36,7 @@ VALID_OPERATORS = {
     "s5aba": "s5aba",
     "+*": "even-addition_odd-multiplication",
     "+-": "even-addition_odd-subtraction",
+    "pfactor" : "prime_factors",
     "sort": "sort",
     "reverse": "reverse",
     "copy": "copy",
@@ -90,7 +92,7 @@ class ArithmeticTokenizer:
         :param obj: the string or list of strings to convert
         :returns: a tensor of the token ids
         """
-        # st()
+        # st() 
         if isinstance(obj, str):
             return self._encode(obj)
         elif isinstance(obj, list):
@@ -161,7 +163,7 @@ class ArithmeticDataset:
         eqs = cls.make_data(operator, operand_length)        
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
-
+        # st()
         train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir)
         val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir)
 
@@ -231,8 +233,8 @@ class ArithmeticDataset:
                     c = a
                     a = (b * c) % MODULUS
             elif operator == "s5":
-                st()
-                c = a * b
+                # st()
+                c = [a[b[i]] for i in range(len(b))]
             elif operator == "s5conj":
                 c = a * b * (a.__invert__())
             elif operator == "s5aba":
@@ -273,33 +275,46 @@ class ArithmeticDataset:
         :param operator: The unary operator to apply to each operand e.g. '+'
         :param operands: A tensor of operands
         :returns: list of equations"""
-        num_examples = len(operands)
+        # operands = list(range(4))
+        # st()
 
-        if operator == "sort":
-            rhs = torch.sort(operands, dim=1)[0]
-        elif operator == "reverse":
-            rhs = torch.flip(operands, dims=(1,))
-        elif operator == "copy":
-            rhs = operands
+        if operator == "pfactor":
+            operands= torch.tensor(NUMS[2:]).unsqueeze(-1)
+            rhs = [list(primefac.primefac(i.item())) for i in operands]
+            # st()
+            rhs_list = rhs
         else:
-            raise Exception("unsupported operator")
+            elems = map(np.array, itertools.permutations(list(range(5))))
+            operands = torch.stack([torch.from_numpy(i) for i in elems])            
+            if operator == "sort":
+                rhs = torch.sort(operands, dim=1)[0]                
+            elif operator == "reverse":
+                rhs = torch.flip(operands, dims=(1,))
+            elif operator == "copy":
+                rhs = operands
+            else:
+                raise Exception("unsupported operator")
+            rhs_list = rhs.tolist()
+        num_examples = operands.shape[0]
 
         def func(L, R):
             L = map(str, L)
             R = map(str, R)
             return f"{operator} {' '.join(L)} = {' '.join(R)}"
-
+        
+        
+        # st()
         if num_examples < 1000000000:
             eqs = [
-                func(L, R)
+                (func(L, R),func(R,L))
                 for L, R in tqdm(
-                    zip(operands.tolist(), rhs.tolist()), total=num_examples
+                    zip(operands.tolist(), rhs_list), total=num_examples
                 )
             ]
         else:
             with ProcessPoolExecutor() as executor:
                 eqs = executor.map(func, tqdm(zip(operands, rhs), total=num_examples))
-
+        # st()
         return eqs
 
     # @staticmethod
@@ -347,12 +362,12 @@ class ArithmeticDataset:
         assert operator in VALID_OPERATORS
         
         
-        if operator not in ["sort", "reverse", "copy"]:
+        if operator not in ["sort", "reverse", "copy","pfactor"]:
             data = cls._make_binary_operation_data(operator)
         else:
             # st()
             data = cls._make_unary_operation_data(operator, operands)
-        
+        # st()
         rng = np.random.RandomState(seed=seed)
         if shuffle:
             rng.shuffle(data)
@@ -364,7 +379,7 @@ class ArithmeticDataset:
             ]
             for i in range(noise_level):
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
-
+        # st()
         data = [[EOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,EOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
         # st()
         return data

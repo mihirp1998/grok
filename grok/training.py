@@ -837,10 +837,16 @@ def train(hparams: Namespace) -> None:
     # import wandb
     # wandb.init(config=hparams_dict)
     # st()
+    group_name = hparams_dict['group']
+    
+    if group_name == 'none':
+        group_name = None
+        
+    # st()
     if hparams_dict['debug']:
-        logger = WandbLogger(project="grok", config=hparams_dict, mode='disabled')
+        logger = WandbLogger(project="grok",  config=hparams_dict, mode='disabled')
     else:
-        logger = WandbLogger(project="grok", config=hparams_dict)
+        logger = WandbLogger(project="grok", group=group_name, config=hparams_dict)
     # st()
 
     # checkpointer = ModelCheckpoint(
