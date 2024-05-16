@@ -3,6 +3,7 @@
 import argparse
 import copy
 import json
+import pandas as pd
 import logging
 import math
 import os
@@ -53,16 +54,16 @@ class TrainableTransformer(LightningModule):
         # self.hparams = hparams  # type: ignore
         # st()
         hparams_dict = hparams
-        
-        
-        
+
+
+
         for key in hparams.keys():
             self.hparams[key]=hparams_dict[key]
-        
+
         # st()
         self.validation_step_outputs = []
         self.training_step_outputs = []
-        
+
         self.prepare_data()
 
         self.transformer = Transformer(
@@ -80,6 +81,8 @@ class TrainableTransformer(LightningModule):
         self.margin = torch.Tensor([0])
         self.next_epoch_to_eval = -1
         self.next_train_epoch_to_log = 0
+
+        self.trainer_step_val_dict = {}
 
     @staticmethod
     def add_model_specific_args(parser: ArgumentParser) -> ArgumentParser:
@@ -108,7 +111,7 @@ class TrainableTransformer(LightningModule):
         parser.add_argument("--non_linearity", type=str, default="relu")
         parser.add_argument("--max_context_len", type=int, default=50)
         parser.add_argument("--math_operator", type=str, default="+")
-        
+
         parser.add_argument(
             "--operand_length",
             type=int,
@@ -315,7 +318,7 @@ class TrainableTransformer(LightningModule):
         if inverse_mapping:
             # st()
             x = batch["text"][:,1]  # shape = batchsize * context_len
-            y = batch["target"][:,1]  # shape = batchsize * context_len            
+            y = batch["target"][:,1]  # shape = batchsize * context_len
             # st()
         else:
             x = batch["text"][:,0]  # shape = batchsize * context_len
@@ -484,25 +487,23 @@ class TrainableTransformer(LightningModule):
         loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
             batch=batch, batch_idx=batch_idx, train=True
         )
-        # y_ha
         
-        # st()
         
         
         if self.hparams.forward_forward_mode:
             inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True
-            )    
+            )
             loss = (loss + inv_loss)/2
         elif self.hparams.reverse_mode:
             inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True, reverse_mode=True
-            )    
+            )
             loss = (loss + inv_loss)/2
-            
-            
-        
-        
+
+
+
+
         self.fwd_time_in_epoch += time.time() - start
         # st()
         # schedulers = self.trainer.lr_schedulers[0]
@@ -518,15 +519,15 @@ class TrainableTransformer(LightningModule):
             "partial_attentions": attentions,
             "partial_values": values,
         }
-        
+
         if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
             # outputs['inv_loss'] = inv_loss
             output['inv_partial_train_loss'] = inv_loss
             output['inv_partial_train_accuracy'] = inv_accuracy
-            
+
         if self.current_epoch == 0:
             output["x_lhs"] = x_lhs
-            
+
         self.training_step_outputs.append(output)
 
         return output
@@ -543,11 +544,11 @@ class TrainableTransformer(LightningModule):
         """
         # st()
         epoch_is_to_be_logged = self.current_epoch == self.next_train_epoch_to_log
-        
+
         outputs = self.training_step_outputs
-        
+
         # st()
-        
+
         if epoch_is_to_be_logged and len(outputs) > 0:
             self.next_train_epoch_to_log = max(
                 int(1.01 * self.next_train_epoch_to_log),
@@ -564,13 +565,13 @@ class TrainableTransformer(LightningModule):
                 accuracy = torch.stack(
                     [x["partial_train_accuracy"] for x in outputs]
                 ).sum()
-                
+
                 if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
-                    inv_loss = torch.stack([x["inv_partial_train_loss"] for x in outputs]).sum()                
+                    inv_loss = torch.stack([x["inv_partial_train_loss"] for x in outputs]).sum()
                     inv_perplexity = torch.exp(inv_loss)
                     inv_accuracy = torch.stack(
                         [x["inv_partial_train_accuracy"] for x in outputs]
-                    ).sum()                    
+                    ).sum()
             # avg_lr = torch.stack([x["learning_rate"] for x in outputs]).mean()
             # max_lr = torch.stack([x["learning_rate"] for x in outputs]).max()
             # last_lr = outputs[-1]["learning_rate"]
@@ -583,7 +584,7 @@ class TrainableTransformer(LightningModule):
             # st()
             logs = {
                 "train_loss": loss,
-                "train_accuracy": accuracy,
+                # "train_accuracy": accuracy,
                 "train_perplexity": perplexity,
                 "learning_rate": first_lr,
                 "len_train_ds": len(self.train_dataset),
@@ -592,14 +593,14 @@ class TrainableTransformer(LightningModule):
                 "time_per_epoch": time.time() - self.training_epoch_start_time,
                 "fwd_time_in_epoch": self.fwd_time_in_epoch,
             }
-            
+
             if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
                 logs['inv_loss'] = inv_loss
                 logs['inv_perplexity'] = torch.exp(inv_loss)
-                logs['inv_accuracy'] = inv_accuracy
-                # st()                
-                
-            
+                # logs['inv_accuracy'] = inv_accuracy
+                # st()
+
+
             for k, v in logs.items():
                 self.log(k, v)
             self.training_step_outputs.clear()
@@ -627,15 +628,15 @@ class TrainableTransformer(LightningModule):
             if self.hparams.forward_forward_mode:
                 inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                     batch=batch, batch_idx=batch_idx, train=False, inverse_mapping=True
-                )    
+                )
             elif self.hparams.reverse_mode:
                 inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                     batch=batch, batch_idx=batch_idx, train=False, inverse_mapping=True, reverse_mode=True
                 )
-            # st() 
-                
-                
-                          
+            # st()
+
+
+
         output = {
             "partial_val_loss": coeff * loss,
             "partial_val_accuracy": coeff * accuracy,
@@ -643,17 +644,23 @@ class TrainableTransformer(LightningModule):
             "partial_attentions": attentions,
             "partial_values": values,
         }
-        
+        partial_dict = {
+            'val_loss': coeff * loss,
+            'val_accuracy': coeff * accuracy,
+        }
+
+
         if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
             output["inv_partial_val_loss"]  = inv_coeff * inv_loss
             output["inv_partial_val_accuracy"]  = inv_coeff * inv_accuracy
-        
+
         if self.current_epoch == 0:
             output["x_lhs"] = x_lhs
         self.validation_step_outputs.append(output)
         return output
 
     def on_validation_epoch_end(self):
+        # st()
         """
         Used by pytorch_lightning
         Accumulates results of all forward validation passes in this epoch
@@ -663,7 +670,7 @@ class TrainableTransformer(LightningModule):
         :returns: a dict with val_loss, val_accuracy
         """
         # st()
-        outputs = self.validation_step_outputs 
+        outputs = self.validation_step_outputs
         validation_is_real = len(outputs) != 0
 
         if validation_is_real:
@@ -674,7 +681,7 @@ class TrainableTransformer(LightningModule):
             loss = torch.stack([x["partial_val_loss"] for x in outputs]).sum()
             perplexity = torch.exp(loss)
             accuracy = torch.stack([x["partial_val_accuracy"] for x in outputs]).sum()
-            
+
             if self.hparams.save_activations or self.hparams.save_outputs:
                 if self.current_epoch == 0:
                     self._save_inputs(outputs, ds="val")
@@ -685,7 +692,14 @@ class TrainableTransformer(LightningModule):
                 "val_accuracy": accuracy,
                 "val_perplexity": perplexity,
             }
-            
+            to_store = logs.copy()
+
+            # make all values float
+            for k, v in to_store.items():
+                if isinstance(v, torch.Tensor):
+                    to_store[k] = v.item()
+            self.trainer_step_val_dict[self.trainer.global_step] = to_store
+
             if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
                 inv_loss = torch.stack([x["inv_partial_val_loss"] for x in outputs]).sum()
                 inv_perplexity = torch.exp(inv_loss)
@@ -693,10 +707,10 @@ class TrainableTransformer(LightningModule):
                 logs['inv_val_loss'] = inv_loss
                 logs['inv_val_perplexity'] = inv_perplexity
                 logs['inv_val_accuracy'] = inv_accuracy
-                
+
                 # st()
-                
-            
+
+
             for name, param in self.named_parameters():
                 # n parameters
                 n_params = param.numel()
@@ -724,27 +738,26 @@ class TrainableTransformer(LightningModule):
                     inv_tr_loss, inv_tr_acc, *_ = self._step(training_data, 0, inverse_mapping=True, reverse_mode=True)
                     logs["inv_full_train_loss"] = inv_tr_loss
                     logs["inv_full_train_acc"] = inv_tr_acc
-                    
 
-                
+
 
             for k, v in logs.items():
                 self.log(k, v)
         # st()
         self.validation_step_outputs.clear()
         # save a checkpoint if the epoch is a power of 2
-        if (
-            self.current_epoch > 0
-            and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
-            == self.current_epoch
-        ):
-            self.trainer.save_checkpoint(
-                os.path.join(
-                    self.hparams.checkpoint_path,
-                    "epoch_" + str(self.current_epoch) + ".ckpt",
-                )
-            )
-            
+        # if (
+        #     self.current_epoch > 0
+        #     and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
+        #     == self.current_epoch
+        # ):
+        #     self.trainer.save_checkpoint(
+        #         os.path.join(
+        #             self.hparams.checkpoint_path,
+        #             "epoch_" + str(self.current_epoch) + ".ckpt",
+        #         )
+        #     )
+
         if validation_is_real:
             return logs
 
@@ -837,23 +850,23 @@ def train(hparams: Namespace) -> None:
     # Create the model
     model = TrainableTransformer(hparams).float()
 
-    torch.save(model, os.path.join(checkpoint_path, "init.pt"))
-    
+    # torch.save(model, os.path.join(checkpoint_path, "init.pt"))
+
     hparams_dict = dict(hparams)
-    
+
     # import wandb
     # wandb.init(config=hparams_dict)
     # st()
     group_name = hparams_dict['group']
-    
+
     if group_name == 'none':
         group_name = None
-        
+
     # st()
     if hparams_dict['debug']:
-        logger = WandbLogger(project="grok",  config=hparams_dict, mode='disabled')
+        logger = WandbLogger(project=hparams['project_name'],  config=hparams_dict, mode='disabled')
     else:
-        logger = WandbLogger(project="grok", group=group_name, config=hparams_dict)
+        logger = WandbLogger(project=hparams['project_name'], group=group_name, config=hparams_dict)
     # st()
 
     # checkpointer = ModelCheckpoint(
@@ -900,6 +913,15 @@ def train(hparams: Namespace) -> None:
     with open(bounds_file, "w") as fh:
         json.dump(bounds, fh)
     """
+    val_df = pd.DataFrame(model.trainer_step_val_dict).transpose()
+    # make 0th col name steps
+    val_df.index.name = "steps"
+    csv_folder = os.path.join(hparams.logdir, hparams.group)
+    os.makedirs(csv_folder, exist_ok=True)
+    csv_folder = os.path.join(csv_folder, f'op_{hparams.math_operator}')
+    os.makedirs(csv_folder, exist_ok=True)
+    csv_path = os.path.join(csv_folder, f'val_{hparams.mode}.csv')
+    val_df.to_csv(csv_path)
     return hparams.logdir
 
 
@@ -939,7 +961,7 @@ def compute_sharpness(hparams: Namespace, ckpts) -> None:
     # Create the model
     model = TrainableTransformer(hparams).float()
 
-    torch.save(model, os.path.join(checkpoint_path, "init.pt"))
+    # torch.save(model, os.path.join(checkpoint_path, "init.pt"))
 
     logger = CSVLogger(hparams.logdir)
 

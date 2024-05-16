@@ -1,13 +1,14 @@
 defaults:
   - _self_  # Override values within this file with values in selected files.
-  - override hydra/hydra_logging: disabled  
-  - override hydra/job_logging: disabled 
+  - exp: ff
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
 debug: False
 random_seed: -1
 embed_style: same
 gpu: 0
-max_epochs: 1000000
-max_steps: 100000
+max_steps: 100000 # 000
+project_name: grok_m
 batchsize: 0
 n_layers: 2
 n_heads: 4
@@ -39,7 +40,10 @@ checkpoint_path: None
 
 
 
-hydra:  
-  output_subdir: null  
-  run:  
-    dir: .
+hydra:
+  output_subdir: /home/mprabhud/phd_projects/grok
+  run:
+    dir: /home/mprabhud/phd_projects/grok
+  sweep:
+    dir: /home/mprabhud/phd_projects/grok
+    subdir: /home/mprabhud/phd_projects/grok    
