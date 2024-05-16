@@ -327,6 +327,7 @@ class TrainableTransformer(LightningModule):
             y_hat, attentions, values = self(
                 x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping  # type: ignore
             )  # shape = batchsize * context_len * vocab_size
+        
         y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
         # Note: each sample must have exactly one '=' and all of them must
         # have it in the same position.
@@ -338,6 +339,7 @@ class TrainableTransformer(LightningModule):
         y_rhs = y[..., eq_position + 1 :]
         y_hat_rhs = y_hat[..., eq_position + 1 :]
         x_lhs = x[..., : eq_position + 1]
+        # st()
 
         if train:
             coeff = float(batch["target"].shape[0]) / len(self.train_dataset)
@@ -385,7 +387,7 @@ class TrainableTransformer(LightningModule):
                 else:
                     grad_vec = torch.cat((grad_vec, p.grad.data.view(-1)))
             return loss, grad_vec
-        return loss, acc, coeff, x_lhs, y_hat_rhs, attentions, values
+        return loss, acc, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values
 
 
     def _save_inputs(self, outputs: Dict, ds: str) -> None:
@@ -478,18 +480,22 @@ class TrainableTransformer(LightningModule):
             self.fwd_time_in_epoch = 0
 
         start = time.time()
-        loss, accuracy, coeff, x_lhs, y_hat_rhs, attentions, values = self._step(
+        
+        loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
             batch=batch, batch_idx=batch_idx, train=True
         )
+        # y_ha
         
         # st()
+        
+        
         if self.hparams.forward_forward_mode:
-            inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_attentions, inv_values = self._step(
+            inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True
             )    
             loss = (loss + inv_loss)/2
         elif self.hparams.reverse_mode:
-            inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_attentions, inv_values = self._step(
+            inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True, reverse_mode=True
             )    
             loss = (loss + inv_loss)/2
@@ -614,16 +620,16 @@ class TrainableTransformer(LightningModule):
         if self.current_epoch != self.next_epoch_to_eval:
             return {}
         with torch.no_grad():
-            loss, accuracy, coeff, x_lhs, y_hat_rhs, attentions, values = self._step(
+            loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
                 batch=batch, batch_idx=batch_idx, train=False
             )
-            
+            # st()
             if self.hparams.forward_forward_mode:
-                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_attentions, inv_values = self._step(
+                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                     batch=batch, batch_idx=batch_idx, train=False, inverse_mapping=True
                 )    
             elif self.hparams.reverse_mode:
-                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_attentions, inv_values = self._step(
+                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                     batch=batch, batch_idx=batch_idx, train=False, inverse_mapping=True, reverse_mode=True
                 )
             # st() 
@@ -705,6 +711,7 @@ class TrainableTransformer(LightningModule):
             training_data = {"text": train_data[:,:, :-1], "target": train_data[:,:, 1:]}
             # st()
             with torch.no_grad():
+                # st()
                 tr_loss, tr_acc, *_ = self._step(training_data, 0)
                 logs["full_train_loss"] = tr_loss
                 logs["full_train_acc"] = tr_acc
@@ -752,7 +759,7 @@ class TrainableTransformer(LightningModule):
                   attentions, and values
         """
 
-        loss, accuracy, coeff, x_lhs, y_hat_rhs, attentions, values = self._step(
+        loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
             batch=batch, batch_idx=batch_idx, train=False, reduction="none"
         )
         output = {

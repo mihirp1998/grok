@@ -4,7 +4,7 @@ defaults:
   - override hydra/job_logging: disabled 
 debug: False
 random_seed: -1
-embed_style: seperate
+embed_style: same
 gpu: 0
 max_epochs: 1000000
 max_steps: 100000
