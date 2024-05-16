@@ -8,6 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
+MODE2NAME = {
+    'f': 'Forward',
+    'ff': 'Forward-Forward',
+    'r': 'Reverse',
+    'smr': 'Semi-Mid-Reverse',
+    'sr': 'Semi-Reverse',
+}
+
 def visualize_operation(operation_path, operation_name, metric):
     # get all the files in the group path
     files = os.listdir(operation_path)
@@ -23,13 +31,15 @@ def visualize_operation(operation_path, operation_name, metric):
         # read the file
         df = pd.read_csv(os.path.join(operation_path, f))
         # plot the data
-        plt.plot(df['steps'], df[metric], label=mode)
+        plt.plot(df['steps'], df[metric], label=MODE2NAME[mode])
 
-    plt.xlabel('Steps')
+    plt.xscale('log')  # Set x-axis to logarithmic scale
+    plt.xlabel('Steps (Log-scale)')
     plt.ylabel(metric)
     plt.title(f'Operator: {operation_name} for {metric}')
     plt.legend()
     plt.savefig(os.path.join(operation_path, 'comparision.png'))
+    print(f'Saved the plot in {operation_path}')
     # plt.show()
 
 def visualize_group(group_path, metric='val_accuracy'):
@@ -44,7 +54,6 @@ def visualize_group(group_path, metric='val_accuracy'):
         operation_path = os.path.join(group_path, o)
         # visualize the operation
         visualize_operation(operation_path, operation_name, metric)
-        print('hi')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Visualize the data in the group folder')

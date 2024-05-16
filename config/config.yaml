@@ -8,7 +8,7 @@ random_seed: -1
 embed_style: seperate
 gpu: 0
 max_epochs: 100 # 1000000
-max_steps: 100 # 000
+max_steps: 500 # 000
 batchsize: 0
 n_layers: 2
 n_heads: 4
