@@ -1,5 +1,8 @@
-- math_operator=2x
-- exp=f
+- math_operator=pfactor
+- exp=ff
 - train_data_pct=50
-- group=c1
-- debug=True
+- group=c4
+- max_context_len=100
+- weight_decay=1.0
+- d_model=256
+- n_layers=4

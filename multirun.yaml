@@ -110,15 +110,18 @@ hydra:
     - hydra/launcher=grogu
     - hydra.mode=MULTIRUN
     task:
-    - math_operator=2x
-    - exp=f
-    - train_data_pct=50
-    - group=c1
-    - debug=True
+    - math_operator=x**3,pfactor
+    - exp=f,ff
+    - train_data_pct=50,70,90
+    - group=c4
+    - max_context_len=100
+    - weight_decay=0.0,1.0
+    - d_model=128,256
+    - n_layers=2,4
   job:
     name: main
     chdir: null
-    override_dirname: debug=True,exp=f,group=c1,math_operator=2x,train_data_pct=50
+    override_dirname: d_model=128,256,exp=f,ff,group=c4,math_operator=x**3,pfactor,max_context_len=100,n_layers=2,4,train_data_pct=50,70,90,weight_decay=0.0,1.0
     id: ???
     num: ???
     config_name: config
@@ -145,7 +148,7 @@ hydra:
       provider: schema
     output_dir: ???
     choices:
-      exp: f
+      exp: ff
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: disabled
@@ -156,7 +159,7 @@ hydra:
       hydra/launcher: grogu
       hydra/output: default
   verbose: false
-debug: true
+debug: false
 random_seed: -1
 embed_style: same
 gpu: 0
@@ -169,15 +172,15 @@ d_model: 128
 dropout: 0.0
 weight_noise: 0.0
 non_linearity: relu
-max_context_len: 50
-math_operator: 2x
+max_context_len: 100
+math_operator: +
 operand_length: 1
-train_data_pct: 50
+train_data_pct: 80
 warmup_steps: 10
-group: c1
+group: c4
 anneal_lr_steps: 100000
-forward_mode: true
-forward_forward_mode: false
+forward_mode: false
+forward_forward_mode: true
 reverse_mode: false
 anneal_lr: false
 max_lr: 0.001
@@ -190,4 +193,4 @@ logdir: logs
 datadir: data
 d_key: -1
 checkpoint_path: None
-mode: f
+mode: ff

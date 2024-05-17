@@ -3,7 +3,7 @@ import math
 import os
 import sys
 import random
-# import primefac
+import primefac
 
 import torch
 from torch import Tensor, LongTensor
@@ -38,6 +38,8 @@ VALID_OPERATORS = {
     "+-": "even-addition_odd-subtraction",
     "pfactor" : "prime_factors",
     "2x" : "2x",
+    "x**3" : "x**3",
+    "2x+1" : "2x+1",
     "sort": "sort",
     "reverse": "reverse",
     "copy": "copy",
@@ -46,9 +48,9 @@ EOS_TOKEN = "<|eos|>"
 EQ_TOKEN = "="
 MODULUS = 97
 NUMS = list(range(MODULUS))
-MODULUS_BIJECTIONS = 20000
+MODULUS_BIJECTIONS = 10
 NUMS_BIJECTIONS = list(range(MODULUS_BIJECTIONS))
-BIJECTIVE_OPERATORS = ["pfactor", "2x"]
+BIJECTIVE_OPERATORS = ["pfactor", "2x", "x**3", "2x+1"]
 
 DEFAULT_DATA_DIR = "data"
 
@@ -72,16 +74,91 @@ def create_data_files(data_dir: str = DEFAULT_DATA_DIR):
     ArithmeticTokenizer.create_token_file(data_dir)
     ArithmeticDataset.create_dataset_files(data_dir)
 
+class ArithmeticTokenizerDigits:
+    """Stores the list of token text to token id mappings and converts between them"""
+
+    token_file = "tokens.txt"
+
+    def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4) -> None:
+        self.token_file = bf.join(data_dir, self.token_file)
+
+        self.itos = self.get_tokens()
+
+        self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
+
+        self.max_length = max_length
+        self.max_digits = max_digits
+
+    def _encode(self, s: str) -> Tensor:
+        output = np.ones(self.max_length)*0 # using EOS token for padding
+        for i, t in enumerate(s.split(" ")):
+            if t.isdigit():
+                for j, c in enumerate(reversed(t)):
+                    output[i*self.max_digits+j] = self.stoi[c]
+            else:
+                output[i*self.max_digits] = self.stoi[t]
+        return LongTensor(output)
+
+    def encode(self, obj: Union[str, List]) -> Tensor:
+        """
+        Convert a string of text into a rank-1 tensor of token ids
+        or convert a list of strings of text into a rank-2 tensor of token ids
+
+        :param obj: the string or list of strings to convert
+        :returns: a tensor of the token ids
+        """
+        if isinstance(obj, str):
+            return self._encode(obj)
+        elif isinstance(obj, list):
+            return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
+        else:
+            raise NotImplementedError
+
+    def decode(self, tensor: Tensor, with_brackets: bool = False) -> str:
+        """
+        Convert a tensor of token ids into a string of text
+
+        :param tensor: a tensor of the token ids
+        :param with_brackets: if true, the returned string will include <> brackets
+                              around the text corresponding to each token.
+        :returns: string of these tokens.
+        """
+        indices = tensor.long()
+        if with_brackets:
+            l = "<"
+            r = ">"
+        else:
+            l = ""
+            r = ""
+        tokens = [l + self.itos[i] + r for i in indices]
+        return " ".join(tokens)
+
+    def __len__(self) -> int:
+        """
+        :returns: the number of tokens in this vocabulary
+        """
+        return len(self.itos)
+
+    @classmethod
+    def get_tokens(cls):
+        tokens = (
+            [EOS_TOKEN, EQ_TOKEN]
+            + list(sorted(list(VALID_OPERATORS.keys())))
+            + list(map(render, NUMS_BIJECTIONS))
+            + ['']
+        )
+        return tokens
+
 
 class ArithmeticTokenizer:
     """Stores the list of token text to token id mappings and converts between them"""
 
     token_file = "tokens.txt"
 
-    def __init__(self, data_dir=DEFAULT_DATA_DIR, is_bijection=False) -> None:
+    def __init__(self, data_dir=DEFAULT_DATA_DIR) -> None:
         self.token_file = bf.join(data_dir, self.token_file)
 
-        self.itos = self.get_tokens(is_bijection=is_bijection)
+        self.itos = self.get_tokens()
 
         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
 
@@ -130,14 +207,6 @@ class ArithmeticTokenizer:
 
     @classmethod
     def get_tokens(cls, is_bijection=False):
-        if is_bijection:
-            tokens = (
-                [EOS_TOKEN, EQ_TOKEN]
-                + list(sorted(list(VALID_OPERATORS.keys())))
-                + list(map(render, NUMS_BIJECTIONS))
-                + list(map(render, itertools.permutations(range(5))))  # s5
-            )
-            return tokens
         tokens = (
             [EOS_TOKEN, EQ_TOKEN]
             + list(sorted(list(VALID_OPERATORS.keys())))
@@ -188,8 +257,16 @@ class ArithmeticDataset:
         """
         :param data: A list of equations strings. Each equation must have an '=' in it.
         """
-        is_bijection = operator in BIJECTIVE_OPERATORS
-        self.tokenizer = ArithmeticTokenizer(data_dir, is_bijection=is_bijection)
+        if operator == '2x':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        elif operator == '2x+1':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        elif operator == 'x**3':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
+        elif operator == 'pfactor':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4)
+        else:
+            self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
         self.train = train
         # st()
@@ -289,9 +366,20 @@ class ArithmeticDataset:
         # st()
 
         if operator == "2x":
-            operands= torch.tensor(NUMS_BIJECTIONS[:MODULUS_BIJECTIONS//2]).unsqueeze(-1)
-            # rhs = [list(primefac.primefac(i.item())) for i in operands]
+            operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [[(i.item())*2] for i in operands]
+            rhs_list = rhs
+        elif operator == "2x+1":
+            operands= torch.tensor(list(range(10000-1))).unsqueeze(-1)
+            rhs = [[(i.item())*2+1] for i in operands]
+            rhs_list = rhs
+        elif operator == "x**3":
+            operands= torch.tensor(list(range(10000))).unsqueeze(-1)
+            rhs = [[(i.item())**3] for i in operands]
+            rhs_list = rhs
+        elif operator == "pfactor":
+            operands= torch.tensor(list(range(10000))).unsqueeze(-1)
+            rhs = [list(primefac.primefac(i.item())) for i in operands]
             rhs_list = rhs
         else:
             elems = map(np.array, itertools.permutations(list(range(5))))
@@ -372,7 +460,7 @@ class ArithmeticDataset:
         assert operator in VALID_OPERATORS
         
         
-        if operator not in ["sort", "reverse", "copy","pfactor","2x"]:
+        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
             data = cls._make_binary_operation_data(operator)
         else:
             # st()
