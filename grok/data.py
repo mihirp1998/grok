@@ -37,6 +37,7 @@ VALID_OPERATORS = {
     "+*": "even-addition_odd-multiplication",
     "+-": "even-addition_odd-subtraction",
     "pfactor" : "prime_factors",
+    "2x" : "2x",
     "sort": "sort",
     "reverse": "reverse",
     "copy": "copy",
@@ -45,6 +46,9 @@ EOS_TOKEN = "<|eos|>"
 EQ_TOKEN = "="
 MODULUS = 97
 NUMS = list(range(MODULUS))
+MODULUS_BIJECTIONS = 20000
+NUMS_BIJECTIONS = list(range(MODULUS_BIJECTIONS))
+BIJECTIVE_OPERATORS = ["pfactor", "2x"]
 
 DEFAULT_DATA_DIR = "data"
 
@@ -74,10 +78,10 @@ class ArithmeticTokenizer:
 
     token_file = "tokens.txt"
 
-    def __init__(self, data_dir=DEFAULT_DATA_DIR) -> None:
+    def __init__(self, data_dir=DEFAULT_DATA_DIR, is_bijection=False) -> None:
         self.token_file = bf.join(data_dir, self.token_file)
 
-        self.itos = self.get_tokens()
+        self.itos = self.get_tokens(is_bijection=is_bijection)
 
         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
 
@@ -92,7 +96,6 @@ class ArithmeticTokenizer:
         :param obj: the string or list of strings to convert
         :returns: a tensor of the token ids
         """
-        # st() 
         if isinstance(obj, str):
             return self._encode(obj)
         elif isinstance(obj, list):
@@ -126,7 +129,15 @@ class ArithmeticTokenizer:
         return len(self.itos)
 
     @classmethod
-    def get_tokens(cls):
+    def get_tokens(cls, is_bijection=False):
+        if is_bijection:
+            tokens = (
+                [EOS_TOKEN, EQ_TOKEN]
+                + list(sorted(list(VALID_OPERATORS.keys())))
+                + list(map(render, NUMS_BIJECTIONS))
+                + list(map(render, itertools.permutations(range(5))))  # s5
+            )
+            return tokens
         tokens = (
             [EOS_TOKEN, EQ_TOKEN]
             + list(sorted(list(VALID_OPERATORS.keys())))
@@ -163,10 +174,8 @@ class ArithmeticDataset:
         eqs = cls.make_data(operator, operand_length)        
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
-        # st()
-        train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir)
-        val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir)
-
+        train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator)
+        val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator)
         return train_ds, val_ds
 
     @classmethod
@@ -175,11 +184,12 @@ class ArithmeticDataset:
         val_rows = ds_len - train_rows
         return train_rows, val_rows
 
-    def __init__(self, name, data: Union[Tensor, List[str]], train, data_dir) -> None:
+    def __init__(self, name, data: Union[Tensor, List[str]], train, data_dir, operator) -> None:
         """
         :param data: A list of equations strings. Each equation must have an '=' in it.
         """
-        self.tokenizer = ArithmeticTokenizer(data_dir)
+        is_bijection = operator in BIJECTIVE_OPERATORS
+        self.tokenizer = ArithmeticTokenizer(data_dir, is_bijection=is_bijection)
         self.name = name
         self.train = train
         # st()
@@ -278,10 +288,10 @@ class ArithmeticDataset:
         # operands = list(range(4))
         # st()
 
-        if operator == "pfactor":
-            operands= torch.tensor(NUMS[2:]).unsqueeze(-1)
-            rhs = [list(primefac.primefac(i.item())) for i in operands]
-            # st()
+        if operator == "2x":
+            operands= torch.tensor(NUMS_BIJECTIONS[:MODULUS_BIJECTIONS//2]).unsqueeze(-1)
+            # rhs = [list(primefac.primefac(i.item())) for i in operands]
+            rhs = [[(i.item())*2] for i in operands]
             rhs_list = rhs
         else:
             elems = map(np.array, itertools.permutations(list(range(5))))
@@ -362,7 +372,7 @@ class ArithmeticDataset:
         assert operator in VALID_OPERATORS
         
         
-        if operator not in ["sort", "reverse", "copy","pfactor"]:
+        if operator not in ["sort", "reverse", "copy","pfactor","2x"]:
             data = cls._make_binary_operation_data(operator)
         else:
             # st()

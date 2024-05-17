@@ -41,9 +41,9 @@ checkpoint_path: None
 
 
 hydra:
-  output_subdir: /home/mprabhud/phd_projects/grok
+  output_subdir: /home/lilic/grok2/grok
   run:
-    dir: /home/mprabhud/phd_projects/grok
+    dir: /home/lilic/grok2/grok
   sweep:
-    dir: /home/mprabhud/phd_projects/grok
-    subdir: /home/mprabhud/phd_projects/grok    
+    dir: /home/lilic/grok2/grok
+    subdir: /home/lilic/grok2/grok    
