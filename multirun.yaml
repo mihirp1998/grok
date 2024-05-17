@@ -110,14 +110,15 @@ hydra:
     - hydra/launcher=grogu
     - hydra.mode=MULTIRUN
     task:
-    - math_operator=+,2x
+    - math_operator=2x
     - exp=f
-    - train_data_pct=50,70,90
+    - train_data_pct=50
     - group=c1
+    - debug=True
   job:
     name: main
     chdir: null
-    override_dirname: exp=f,group=c1,math_operator=+,2x,train_data_pct=50,70,90
+    override_dirname: debug=True,exp=f,group=c1,math_operator=2x,train_data_pct=50
     id: ???
     num: ???
     config_name: config
@@ -155,7 +156,7 @@ hydra:
       hydra/launcher: grogu
       hydra/output: default
   verbose: false
-debug: false
+debug: true
 random_seed: -1
 embed_style: same
 gpu: 0
@@ -169,9 +170,9 @@ dropout: 0.0
 weight_noise: 0.0
 non_linearity: relu
 max_context_len: 50
-math_operator: +
+math_operator: 2x
 operand_length: 1
-train_data_pct: 80
+train_data_pct: 50
 warmup_steps: 10
 group: c1
 anneal_lr_steps: 100000

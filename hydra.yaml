@@ -101,25 +101,26 @@ hydra:
       level: ERROR
     disable_existing_loggers: true
   env: {}
-  mode: MULTIRUN
+  mode: RUN
   searchpath: []
   callbacks: {}
   output_subdir: /home/lilic/grok2/grok
   overrides:
     hydra:
     - hydra/launcher=grogu
-    - hydra.mode=MULTIRUN
+    - hydra.mode=RUN
     task:
-    - math_operator=+
+    - math_operator=2x
     - exp=f
-    - train_data_pct=70
+    - train_data_pct=50
     - group=c1
+    - debug=True
   job:
     name: main
     chdir: null
-    override_dirname: exp=f,group=c1,math_operator=+,train_data_pct=70
-    id: '1677180_1'
-    num: 1
+    override_dirname: debug=True,exp=f,group=c1,math_operator=2x,train_data_pct=50
+    id: ???
+    num: ???
     config_name: config
     env_set: {}
     env_copy: []
@@ -155,4 +156,3 @@ hydra:
       hydra/launcher: grogu
       hydra/output: default
   verbose: false
-e
