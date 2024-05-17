@@ -8,7 +8,7 @@ random_seed: -1
 embed_style: same
 gpu: 0
 max_steps: 100000 # 000
-project_name: grok_m
+project_name: lili-grok
 batchsize: 0
 n_layers: 2
 n_heads: 4
@@ -41,9 +41,9 @@ checkpoint_path: None
 
 
 hydra:
-  output_subdir: /home/mprabhud/phd_projects/grok
+  output_subdir: /home/lilic/grok2/grok
   run:
-    dir: /home/mprabhud/phd_projects/grok
+    dir: /home/lilic/grok2/grok
   sweep:
-    dir: /home/mprabhud/phd_projects/grok
-    subdir: /home/mprabhud/phd_projects/grok    
+    dir: /home/lilic/grok2/grok
+    subdir: /home/lilic/grok2/grok    

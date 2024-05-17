@@ -1,0 +1,192 @@
+hydra:
+  run:
+    dir: /home/lilic/grok2/grok
+  sweep:
+    dir: /home/lilic/grok2/grok
+    subdir: /home/lilic/grok2/grok
+  launcher:
+    submitit_folder: slurm_out
+    timeout_min: 360
+    cpus_per_task: 8
+    gpus_per_node: null
+    tasks_per_node: 1
+    mem_gb: 40
+    nodes: 1
+    name: inverse
+    stderr_to_stdout: false
+    _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+    partition: all
+    qos: null
+    comment: null
+    constraint: null
+    exclude: null
+    gres: gpu:1
+    cpus_per_gpu: null
+    gpus_per_task: null
+    mem_per_gpu: null
+    mem_per_cpu: null
+    account: null
+    signal_delay_s: 120
+    max_num_timeout: 100
+    additional_parameters: {}
+    array_parallelism: 256
+    setup: null
+  sweeper:
+    _target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
+    max_batch_size: null
+    params: null
+  help:
+    app_name: ${hydra.job.name}
+    header: '${hydra.help.app_name} is powered by Hydra.
+
+      '
+    footer: 'Powered by Hydra (https://hydra.cc)
+
+      Use --hydra-help to view Hydra specific help
+
+      '
+    template: '${hydra.help.header}
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (group=option)
+
+
+      $APP_CONFIG_GROUPS
+
+
+      == Config ==
+
+      Override anything in the config (foo.bar=value)
+
+
+      $CONFIG
+
+
+      ${hydra.help.footer}
+
+      '
+  hydra_help:
+    template: 'Hydra (${hydra.runtime.version})
+
+      See https://hydra.cc for more info.
+
+
+      == Flags ==
+
+      $FLAGS_HELP
+
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (For example, append hydra/job_logging=disabled
+      to command line)
+
+
+      $HYDRA_CONFIG_GROUPS
+
+
+      Use ''--cfg hydra'' to Show the Hydra config.
+
+      '
+    hydra_help: ???
+  hydra_logging:
+    version: 1
+    root:
+      level: ERROR
+    disable_existing_loggers: true
+  job_logging:
+    version: 1
+    root:
+      level: ERROR
+    disable_existing_loggers: true
+  env: {}
+  mode: MULTIRUN
+  searchpath: []
+  callbacks: {}
+  output_subdir: /home/lilic/grok2/grok
+  overrides:
+    hydra:
+    - hydra/launcher=grogu
+    - hydra.mode=MULTIRUN
+    task:
+    - math_operator=+,2x
+    - exp=f
+    - train_data_pct=50,70,90
+    - group=c1
+  job:
+    name: main
+    chdir: null
+    override_dirname: exp=f,group=c1,math_operator=+,2x,train_data_pct=50,70,90
+    id: ???
+    num: ???
+    config_name: config
+    env_set: {}
+    env_copy: []
+    config:
+      override_dirname:
+        kv_sep: '='
+        item_sep: ','
+        exclude_keys: []
+  runtime:
+    version: 1.3.2
+    version_base: '1.3'
+    cwd: /home/lilic/grok2/grok
+    config_sources:
+    - path: hydra.conf
+      schema: pkg
+      provider: hydra
+    - path: /home/lilic/grok2/grok/config
+      schema: file
+      provider: main
+    - path: ''
+      schema: structured
+      provider: schema
+    output_dir: ???
+    choices:
+      exp: f
+      hydra/env: default
+      hydra/callbacks: null
+      hydra/job_logging: disabled
+      hydra/hydra_logging: disabled
+      hydra/hydra_help: default
+      hydra/help: default
+      hydra/sweeper: basic
+      hydra/launcher: grogu
+      hydra/output: default
+  verbose: false
+debug: false
+random_seed: -1
+embed_style: same
+gpu: 0
+max_steps: 100000
+project_name: lili-grok
+batchsize: 0
+n_layers: 2
+n_heads: 4
+d_model: 128
+dropout: 0.0
+weight_noise: 0.0
+non_linearity: relu
+max_context_len: 50
+math_operator: +
+operand_length: 1
+train_data_pct: 80
+warmup_steps: 10
+group: c1
+anneal_lr_steps: 100000
+forward_mode: true
+forward_forward_mode: false
+reverse_mode: false
+anneal_lr: false
+max_lr: 0.001
+weight_decay: 0
+weight_decay_kind: to_zero
+noise_factor: 0
+save_activations: false
+save_outputs: false
+logdir: logs
+datadir: data
+d_key: -1
+checkpoint_path: None
+mode: f
