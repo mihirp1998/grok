@@ -413,7 +413,6 @@ class Transformer(nn.Module):
         # Make sure sampling inputs are on the correct device
         x = x.to(self.embedding.weight.device)
 
-        st()
         # make_attention mask
         this_max_context_len = x.shape[-1]
         self_attn_mask = self.self_attn_mask[  # type: ignore
@@ -469,8 +468,6 @@ class Transformer(nn.Module):
         if self.use_regression:
             y_hat = self.pooling(y_hat.permute(0,2,1)).squeeze(-1) # ()
             y_hat = self.linear(y_hat)
-
-        st()
 
         return y_hat, attentions, values
 

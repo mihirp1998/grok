@@ -58,13 +58,14 @@ class TrainableTransformer(LightningModule):
         for key in hparams.keys():
             self.hparams[key]=hparams_dict[key]
 
+        if not self.hparams.use_original_tokenizer:
+            self.logit_mask = None
+
+
         # st()
         self.validation_step_outputs = []
         self.training_step_outputs = []
         self.prepare_data()
-
-        if not self.hparams.use_original_tokenizer:
-            self.logit_mask = torch.zeros(len(self.train_dataset.tokenizer.vocab_size), dtype=torch.float32)
 
         self.transformer = Transformer(
             hparams.n_layers,
@@ -168,7 +169,6 @@ class TrainableTransformer(LightningModule):
             max_context_len=self.hparams.max_context_len,  # type: ignore
             use_original_tokenizer=self.hparams.use_original_tokenizer,  # type: ignore
         )
-        st()
 
         if not self.hparams.use_original_tokenizer:
             # iterate through all the data and put the seen tokens
@@ -179,9 +179,11 @@ class TrainableTransformer(LightningModule):
                     for eqn in dataset.data[i]:
                         for token in eqn.flatten():
                             seen_tokens.add(token.item())
-            st()
             # just keep seen_tokens as 0 and rest as -inf
-            self.logit_mask = torch.full((self.train_dataset.tokenizer.vocab_size,), -float("inf"), dtype=torch.float32)
+            if self.logit_mask is None:
+                # init only once
+                print('init logit mask')
+                self.logit_mask = torch.full((self.train_dataset.tokenizer.vocab_size,), -float("inf"), dtype=torch.float32)
 
             # Set the seen tokens to 0
             self.logit_mask[list(seen_tokens)] = 0
@@ -359,7 +361,6 @@ class TrainableTransformer(LightningModule):
             eq_token_index = self.train_dataset.tokenizer.stoi["="]
         else:
             eq_token_index = self.train_dataset.tokenizer.convert_tokens_to_ids("=")
-
         eq_position_t = torch.nonzero(y[0, :] == eq_token_index, as_tuple=False)
         eq_position = int(eq_position_t.squeeze())
 
@@ -367,7 +368,6 @@ class TrainableTransformer(LightningModule):
         y_rhs = y[..., eq_position + 1 :]
         y_hat_rhs = y_hat[..., eq_position + 1 :]
         x_lhs = x[..., : eq_position + 1]
-        st()
 
         if train:
             coeff = float(batch["target"].shape[0]) / len(self.train_dataset)
@@ -377,6 +377,9 @@ class TrainableTransformer(LightningModule):
             ignore_index = -100
         else:
             ignore_index = self.train_dataset.tokenizer.pad_token_id
+        if not self.hparams.use_original_tokenizer:
+            # hf tokenizer used, masking out all unused tokens not present in data to help convergence
+            y_hat_rhs = y_hat_rhs + self.logit_mask
         loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction, ignore_index=ignore_index)
 
         with torch.no_grad():
@@ -893,9 +896,9 @@ def train(hparams: Namespace) -> None:
 
     # st()
     if hparams_dict['debug']:
-        logger = WandbLogger(project=hparams['project_name'],  config=hparams_dict, mode='disabled')
+        logger = WandbLogger(project=hparams['project_name'],  config=hparams_dict, mode='disabled', entity='groking')
     else:
-        logger = WandbLogger(project=hparams['project_name'], group=group_name, config=hparams_dict)
+        logger = WandbLogger(project=hparams['project_name'], group=group_name, config=hparams_dict, entity='groking')
     # st()
 
     # checkpointer = ModelCheckpoint(

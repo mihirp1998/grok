@@ -1,0 +1,4 @@
+- max_context_len=100
+- math_operator=x**3
+- n_heads=8
+- n_layers=12

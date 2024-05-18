@@ -13,7 +13,7 @@ batchsize: 0
 n_layers: 2
 n_heads: 4
 d_model: 128
-dropout: 0.0
+dropout: 0.2
 weight_noise: 0.0
 non_linearity: "relu"
 max_context_len: 50
@@ -26,9 +26,9 @@ anneal_lr_steps: 100000
 forward_mode: False
 forward_forward_mode: False
 reverse_mode: False
-anneal_lr: False
+anneal_lr: True
 max_lr: 1e-3
-weight_decay: 0
+weight_decay: 1
 weight_decay_kind: to_zero
 noise_factor: 0
 save_activations: False
@@ -37,8 +37,7 @@ logdir: logs
 datadir: data
 d_key: -1
 checkpoint_path: None
-use_original_tokenizer: False
-
+use_original_tokenizer: True
 
 
 hydra:

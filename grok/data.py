@@ -48,13 +48,15 @@ VALID_OPERATORS = {
     "copy": "copy",
 }
 EOS_TOKEN = "<|endoftext|>" # in line with gpt2
+SOS_TOKEN = "<|startoftext|>" # in line with gpt2
+PAD_TOKEN = "<|pad|>"
 EQ_TOKEN = "="
 MODULUS = 97
 NUMS = list(range(MODULUS))
 MODULUS_BIJECTIONS = 10
 NUMS_BIJECTIONS = list(range(MODULUS_BIJECTIONS))
 BIJECTIVE_OPERATORS = ["pfactor", "2x", "x**3", "2x+1"]
-
+SPACE = " "
 DEFAULT_DATA_DIR = "data"
 
 
@@ -77,82 +79,86 @@ def create_data_files(data_dir: str = DEFAULT_DATA_DIR):
     ArithmeticTokenizer.create_token_file(data_dir)
     ArithmeticDataset.create_dataset_files(data_dir)
 
-# class ArithmeticTokenizerDigits:
-#     """Stores the list of token text to token id mappings and converts between them"""
+class ArithmeticTokenizerDigits:
+    """Stores the list of token text to token id mappings and converts between them"""
 
-#     token_file = "tokens.txt"
+    token_file = "tokens.txt"
 
-#     def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4) -> None:
-#         self.token_file = bf.join(data_dir, self.token_file)
+    def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4) -> None:
+        self.token_file = bf.join(data_dir, self.token_file)
 
-#         self.itos = self.get_tokens()
+        self.itos = self.get_tokens()
 
-#         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
+        self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
 
-#         self.max_length = max_length
-#         self.max_digits = max_digits
+        self.max_length = max_length
+        self.max_digits = max_digits
 
-#     def _encode(self, s: str) -> Tensor:
-#         st()
-#         output = np.ones(self.max_length)*0 # using EOS token for padding
-#         for i, t in enumerate(s.split(" ")):
-#             if t.isdigit():
-#                 for j, c in enumerate(reversed(t)):
-#                     output[i*self.max_digits+j] = self.stoi[c]
-#             else:
-#                 output[i*self.max_digits] = self.stoi[t]
-#         return LongTensor(output)
+    def _encode(self, s: str) -> Tensor:
+        output = np.ones(self.max_length)*self.stoi[PAD_TOKEN]
+        ctr = 0
+        s = s.strip()
+        for t in s.split(" "):
+            if t.isdigit():
+                for c in t:
+                    output[ctr] = self.stoi[c]
+                    ctr += 1
+            else:
+                output[ctr] = self.stoi[t]
+                ctr += 1
+            output[ctr] = self.stoi[SPACE]
+            ctr += 1
+        return LongTensor(output)
 
-#     def encode(self, obj: Union[str, List]) -> Tensor:
-#         """
-#         Convert a string of text into a rank-1 tensor of token ids
-#         or convert a list of strings of text into a rank-2 tensor of token ids
+    def encode(self, obj: Union[str, List]) -> Tensor:
+        """
+        Convert a string of text into a rank-1 tensor of token ids
+        or convert a list of strings of text into a rank-2 tensor of token ids
 
-#         :param obj: the string or list of strings to convert
-#         :returns: a tensor of the token ids
-#         """
-#         if isinstance(obj, str):
-#             return self._encode(obj)
-#         elif isinstance(obj, list):
-#             return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
-#         else:
-#             raise NotImplementedError
+        :param obj: the string or list of strings to convert
+        :returns: a tensor of the token ids
+        """
+        if isinstance(obj, str):
+            return self._encode(obj)
+        elif isinstance(obj, list):
+            return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
+        else:
+            raise NotImplementedError
 
-#     def decode(self, tensor: Tensor, with_brackets: bool = False) -> str:
-#         """
-#         Convert a tensor of token ids into a string of text
+    def decode(self, tensor: Tensor, with_brackets: bool = False) -> str:
+        """
+        Convert a tensor of token ids into a string of text
 
-#         :param tensor: a tensor of the token ids
-#         :param with_brackets: if true, the returned string will include <> brackets
-#                               around the text corresponding to each token.
-#         :returns: string of these tokens.
-#         """
-#         indices = tensor.long()
-#         if with_brackets:
-#             l = "<"
-#             r = ">"
-#         else:
-#             l = ""
-#             r = ""
-#         tokens = [l + self.itos[i] + r for i in indices]
-#         return " ".join(tokens)
+        :param tensor: a tensor of the token ids
+        :param with_brackets: if true, the returned string will include <> brackets
+                              around the text corresponding to each token.
+        :returns: string of these tokens.
+        """
+        indices = tensor.long()
+        if with_brackets:
+            l = "<"
+            r = ">"
+        else:
+            l = ""
+            r = ""
+        tokens = [l + self.itos[i] + r for i in indices]
+        return " ".join(tokens)
 
-#     def __len__(self) -> int:
-#         """
-#         :returns: the number of tokens in this vocabulary
-#         """
-#         return len(self.itos)
+    def __len__(self) -> int:
+        """
+        :returns: the number of tokens in this vocabulary
+        """
+        return len(self.itos)
 
-#     @classmethod
-#     def get_tokens(cls):
-#         tokens = (
-#             [EOS_TOKEN, EQ_TOKEN]
-#             + list(sorted(list(VALID_OPERATORS.keys())))
-#             + list(map(render, NUMS_BIJECTIONS))
-#             + ['']
-#         )
-#         return tokens
-
+    @classmethod
+    def get_tokens(cls):
+        tokens = (
+            [SOS_TOKEN, EOS_TOKEN, EQ_TOKEN, SPACE, PAD_TOKEN]
+            + list(sorted(list(VALID_OPERATORS.keys())))
+            + list(map(render, NUMS_BIJECTIONS))
+            + ['']
+        )
+        return tokens
 
 class ArithmeticTokenizer:
     """Stores the list of token text to token id mappings and converts between them"""
@@ -165,7 +171,6 @@ class ArithmeticTokenizer:
         self.itos = self.get_tokens(is_bijection=is_bijection)
 
         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
-        st()
 
     def _encode(self, s: str) -> Tensor:
         return LongTensor([self.stoi[t] for t in s.split(" ")])
@@ -213,7 +218,7 @@ class ArithmeticTokenizer:
     @classmethod
     def get_tokens(cls, is_bijection=False):
         tokens = (
-            [EOS_TOKEN, EQ_TOKEN]
+            [SOS_TOKEN, EOS_TOKEN, EQ_TOKEN]
             + list(sorted(list(VALID_OPERATORS.keys())))
             + list(map(render, NUMS))
             + list(map(render, itertools.permutations(range(5))))  # s5
@@ -266,17 +271,18 @@ class ArithmeticDataset:
         self.max_context_len = max_context_len
         # if operator in ['2x','2x+1','x**3','pfactor']:
         # gp2 tokenizer with max_context_length, and padding to max_length with EOS tokens
-        if not use_original_tokenizer:
-            self.tokenizer = AutoTokenizer.from_pretrained("gpt2") #, max_length=self.max_context_length, padding=True, truncation=True)
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        # if not use_original_tokenizer:
+            # self.tokenizer = AutoTokenizer.from_pretrained("gpt2") #, max_length=self.max_context_length, padding=True, truncation=True)
+            # self.tokenizer.pad_token = self.tokenizer.eos_token
             # EOS_TOKEN = self.tokenizer.eos_token # have hardcoded this to gpt2 eos token
-        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
-        # elif operator == '2x+1':
-        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
-        # elif operator == 'x**3':
-        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
-        # elif operator == 'pfactor':
-        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4)
+        if operator == '2x':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        elif operator == '2x+1':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        elif operator == 'x**3':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
+        elif operator == 'pfactor':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4)
         else:
             self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
@@ -285,17 +291,17 @@ class ArithmeticDataset:
         if isinstance(data, list):
             # if operator in ['2x','2x+1','x**3','pfactor']:
                 # hf tooling
-            if not use_original_tokenizer:
-                # self.data = self.tokenizer.encode(data, padding=True, truncation=True, max_length=self.max_context_len)
-                objs = []
-                for eqn_list in data:
-                    tmp = []
-                    for eqn in eqn_list:
-                        tmp.append(self.tokenizer.encode(eqn, padding='max_length', max_length=self.max_context_len, truncation=False))
-                    objs.append(tmp)
-                self.data = torch.tensor(objs)
-            else:
-                self.data = self.tokenizer.encode(data)
+            # if not use_original_tokenizer:
+            #     # self.data = self.tokenizer.encode(data, padding=True, truncation=True, max_length=self.max_context_len)
+            #     objs = []
+            #     for eqn_list in data:
+            #         tmp = []
+            #         for eqn in eqn_list:
+            #             tmp.append(self.tokenizer.encode(eqn, padding='max_length', max_length=self.max_context_len, truncation=False))
+            #         objs.append(tmp)
+            #     self.data = torch.tensor(objs)
+            # else:
+            self.data = self.tokenizer.encode(data)
         else:
             self.data = data
 
@@ -502,7 +508,7 @@ class ArithmeticDataset:
             for i in range(noise_level):
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
         # st()
-        data = [[EOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,EOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
+        data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
         # st()
         return data
 
