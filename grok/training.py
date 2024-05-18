@@ -181,9 +181,10 @@ class TrainableTransformer(LightningModule):
                             seen_tokens.add(token.item())
             st()
             # just keep seen_tokens as 0 and rest as -inf
-            self.logit_mask = torch.zeros(len(self.train_dataset.tokenizer.vocab_size), dtype=torch.float32)
-            # self.logit_mask[torch.tensor(list(seen_tokens))] = 0
-            self.logit_mask[~torch.tensor(list(seen_tokens))] = -float("inf")
+            self.logit_mask = torch.full((self.train_dataset.tokenizer.vocab_size,), -float("inf"), dtype=torch.float32)
+
+            # Set the seen tokens to 0
+            self.logit_mask[list(seen_tokens)] = 0
 
 
     def train_dataloader(self) -> ArithmeticIterator:  # type: ignore
