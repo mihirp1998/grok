@@ -18,7 +18,8 @@ import os
 def main(args: DictConfig):
     # st()
     # wandb.login(key='899662853ead8246d39f962194401e222ad8517a', relogin=False)
-    wandb.login(key='ad54c625d116da251040a8a315cb1b1933b181cf', relogin=False)
+    # wandb.login(key='ad54c625d116da251040a8a315cb1b1933b181cf', relogin=False)
+    wandb.login(key='5508720f47b02cabd61bb6acd61dc553d313b062', relogin=True)
     print(args)
     args.logdir = os.path.abspath(args.logdir)
     args.datadir = os.path.abspath(args.datadir)

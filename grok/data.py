@@ -16,6 +16,9 @@ from mod import Mod
 
 import blobfile as bf
 import ipdb
+import tokenizers
+from transformers import AutoTokenizer
+
 st = ipdb.set_trace
 
 VALID_OPERATORS = {
@@ -44,7 +47,7 @@ VALID_OPERATORS = {
     "reverse": "reverse",
     "copy": "copy",
 }
-EOS_TOKEN = "<|eos|>"
+EOS_TOKEN = "<|endoftext|>" # in line with gpt2
 EQ_TOKEN = "="
 MODULUS = 97
 NUMS = list(range(MODULUS))
@@ -74,80 +77,81 @@ def create_data_files(data_dir: str = DEFAULT_DATA_DIR):
     ArithmeticTokenizer.create_token_file(data_dir)
     ArithmeticDataset.create_dataset_files(data_dir)
 
-class ArithmeticTokenizerDigits:
-    """Stores the list of token text to token id mappings and converts between them"""
+# class ArithmeticTokenizerDigits:
+#     """Stores the list of token text to token id mappings and converts between them"""
 
-    token_file = "tokens.txt"
+#     token_file = "tokens.txt"
 
-    def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4) -> None:
-        self.token_file = bf.join(data_dir, self.token_file)
+#     def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4) -> None:
+#         self.token_file = bf.join(data_dir, self.token_file)
 
-        self.itos = self.get_tokens()
+#         self.itos = self.get_tokens()
 
-        self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
+#         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
 
-        self.max_length = max_length
-        self.max_digits = max_digits
+#         self.max_length = max_length
+#         self.max_digits = max_digits
 
-    def _encode(self, s: str) -> Tensor:
-        output = np.ones(self.max_length)*0 # using EOS token for padding
-        for i, t in enumerate(s.split(" ")):
-            if t.isdigit():
-                for j, c in enumerate(reversed(t)):
-                    output[i*self.max_digits+j] = self.stoi[c]
-            else:
-                output[i*self.max_digits] = self.stoi[t]
-        return LongTensor(output)
+#     def _encode(self, s: str) -> Tensor:
+#         st()
+#         output = np.ones(self.max_length)*0 # using EOS token for padding
+#         for i, t in enumerate(s.split(" ")):
+#             if t.isdigit():
+#                 for j, c in enumerate(reversed(t)):
+#                     output[i*self.max_digits+j] = self.stoi[c]
+#             else:
+#                 output[i*self.max_digits] = self.stoi[t]
+#         return LongTensor(output)
 
-    def encode(self, obj: Union[str, List]) -> Tensor:
-        """
-        Convert a string of text into a rank-1 tensor of token ids
-        or convert a list of strings of text into a rank-2 tensor of token ids
+#     def encode(self, obj: Union[str, List]) -> Tensor:
+#         """
+#         Convert a string of text into a rank-1 tensor of token ids
+#         or convert a list of strings of text into a rank-2 tensor of token ids
 
-        :param obj: the string or list of strings to convert
-        :returns: a tensor of the token ids
-        """
-        if isinstance(obj, str):
-            return self._encode(obj)
-        elif isinstance(obj, list):
-            return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
-        else:
-            raise NotImplementedError
+#         :param obj: the string or list of strings to convert
+#         :returns: a tensor of the token ids
+#         """
+#         if isinstance(obj, str):
+#             return self._encode(obj)
+#         elif isinstance(obj, list):
+#             return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
+#         else:
+#             raise NotImplementedError
 
-    def decode(self, tensor: Tensor, with_brackets: bool = False) -> str:
-        """
-        Convert a tensor of token ids into a string of text
+#     def decode(self, tensor: Tensor, with_brackets: bool = False) -> str:
+#         """
+#         Convert a tensor of token ids into a string of text
 
-        :param tensor: a tensor of the token ids
-        :param with_brackets: if true, the returned string will include <> brackets
-                              around the text corresponding to each token.
-        :returns: string of these tokens.
-        """
-        indices = tensor.long()
-        if with_brackets:
-            l = "<"
-            r = ">"
-        else:
-            l = ""
-            r = ""
-        tokens = [l + self.itos[i] + r for i in indices]
-        return " ".join(tokens)
+#         :param tensor: a tensor of the token ids
+#         :param with_brackets: if true, the returned string will include <> brackets
+#                               around the text corresponding to each token.
+#         :returns: string of these tokens.
+#         """
+#         indices = tensor.long()
+#         if with_brackets:
+#             l = "<"
+#             r = ">"
+#         else:
+#             l = ""
+#             r = ""
+#         tokens = [l + self.itos[i] + r for i in indices]
+#         return " ".join(tokens)
 
-    def __len__(self) -> int:
-        """
-        :returns: the number of tokens in this vocabulary
-        """
-        return len(self.itos)
+#     def __len__(self) -> int:
+#         """
+#         :returns: the number of tokens in this vocabulary
+#         """
+#         return len(self.itos)
 
-    @classmethod
-    def get_tokens(cls):
-        tokens = (
-            [EOS_TOKEN, EQ_TOKEN]
-            + list(sorted(list(VALID_OPERATORS.keys())))
-            + list(map(render, NUMS_BIJECTIONS))
-            + ['']
-        )
-        return tokens
+#     @classmethod
+#     def get_tokens(cls):
+#         tokens = (
+#             [EOS_TOKEN, EQ_TOKEN]
+#             + list(sorted(list(VALID_OPERATORS.keys())))
+#             + list(map(render, NUMS_BIJECTIONS))
+#             + ['']
+#         )
+#         return tokens
 
 
 class ArithmeticTokenizer:
@@ -161,6 +165,7 @@ class ArithmeticTokenizer:
         self.itos = self.get_tokens(is_bijection=is_bijection)
 
         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
+        st()
 
     def _encode(self, s: str) -> Tensor:
         return LongTensor([self.stoi[t] for t in s.split(" ")])
@@ -226,6 +231,8 @@ class ArithmeticDataset:
         operator: str,
         operand_length: Optional[int] = None,
         data_dir: str = DEFAULT_DATA_DIR,
+        max_context_len: int = 50,
+        use_original_tokenizer: bool = False,
     ):
         """
         Creates training and validation datasets
@@ -238,13 +245,12 @@ class ArithmeticDataset:
 
         assert (0 < train_pct) and (train_pct < 100)
 
-
         ds_name = cls.get_dsname(operator, operand_length)
-        eqs = cls.make_data(operator, operand_length)        
+        eqs = cls.make_data(operator, operand_length)
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
-        train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator)
-        val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator)
+        train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator, max_context_len=max_context_len, use_original_tokenizer=use_original_tokenizer)
+        val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator, max_context_len=max_context_len, use_original_tokenizer=use_original_tokenizer)
         return train_ds, val_ds
 
     @classmethod
@@ -253,25 +259,43 @@ class ArithmeticDataset:
         val_rows = ds_len - train_rows
         return train_rows, val_rows
 
-    def __init__(self, name, data: Union[Tensor, List[str]], train, data_dir, operator) -> None:
+    def __init__(self, name, data: Union[Tensor, List[str]], train, data_dir, operator, max_context_len, use_original_tokenizer) -> None:
         """
         :param data: A list of equations strings. Each equation must have an '=' in it.
         """
-        if operator == '2x':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
-        elif operator == '2x+1':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
-        elif operator == 'x**3':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
-        elif operator == 'pfactor':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4)
+        self.max_context_len = max_context_len
+        # if operator in ['2x','2x+1','x**3','pfactor']:
+        # gp2 tokenizer with max_context_length, and padding to max_length with EOS tokens
+        if not use_original_tokenizer:
+            self.tokenizer = AutoTokenizer.from_pretrained("gpt2") #, max_length=self.max_context_length, padding=True, truncation=True)
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            # EOS_TOKEN = self.tokenizer.eos_token # have hardcoded this to gpt2 eos token
+        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        # elif operator == '2x+1':
+        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        # elif operator == 'x**3':
+        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
+        # elif operator == 'pfactor':
+        #     self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4)
         else:
             self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
         self.train = train
         # st()
         if isinstance(data, list):
-            self.data = self.tokenizer.encode(data)
+            # if operator in ['2x','2x+1','x**3','pfactor']:
+                # hf tooling
+            if not use_original_tokenizer:
+                # self.data = self.tokenizer.encode(data, padding=True, truncation=True, max_length=self.max_context_len)
+                objs = []
+                for eqn_list in data:
+                    tmp = []
+                    for eqn in eqn_list:
+                        tmp.append(self.tokenizer.encode(eqn, padding='max_length', max_length=self.max_context_len, truncation=False))
+                    objs.append(tmp)
+                self.data = torch.tensor(objs)
+            else:
+                self.data = self.tokenizer.encode(data)
         else:
             self.data = data
 
@@ -344,9 +368,9 @@ class ArithmeticDataset:
                 c = eval(f"({a} {operator} {b}) % {MODULUS}")
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
-            # st()
             eqs.append([eq,invert_eq])
-            
+
+
 
         # if operator == "s5":
         #     print("eqs", eqs)
@@ -383,9 +407,9 @@ class ArithmeticDataset:
             rhs_list = rhs
         else:
             elems = map(np.array, itertools.permutations(list(range(5))))
-            operands = torch.stack([torch.from_numpy(i) for i in elems])            
+            operands = torch.stack([torch.from_numpy(i) for i in elems])
             if operator == "sort":
-                rhs = torch.sort(operands, dim=1)[0]                
+                rhs = torch.sort(operands, dim=1)[0]
             elif operator == "reverse":
                 rhs = torch.flip(operands, dims=(1,))
             elif operator == "copy":
@@ -399,8 +423,8 @@ class ArithmeticDataset:
             L = map(str, L)
             R = map(str, R)
             return f"{operator} {' '.join(L)} = {' '.join(R)}"
-        
-        
+
+
         # st()
         if num_examples < 1000000000:
             eqs = [
@@ -458,8 +482,8 @@ class ArithmeticDataset:
     def make_data(cls, operator, operands=None, shuffle=True, seed=0) -> List[str]:
         operator, noise_level = cls._get_operator_and_noise_level(operator)
         assert operator in VALID_OPERATORS
-        
-        
+
+
         if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
             data = cls._make_binary_operation_data(operator)
         else:

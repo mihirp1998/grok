@@ -1,6 +1,6 @@
 defaults:
   - _self_  # Override values within this file with values in selected files.
-  - exp: ff
+  - exp: f
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 debug: False
@@ -8,7 +8,7 @@ random_seed: -1
 embed_style: same
 gpu: 0
 max_steps: 100000 # 000
-project_name: lili-grok
+project_name: sid-grok
 batchsize: 0
 n_layers: 2
 n_heads: 4
@@ -37,13 +37,14 @@ logdir: logs
 datadir: data
 d_key: -1
 checkpoint_path: None
+use_original_tokenizer: False
 
 
 
 hydra:
-  output_subdir: /home/lilic/grok2/grok
+  output_subdir: /home/mprabhud/sp/grok
   run:
-    dir: /home/lilic/grok2/grok
+    dir: /home/mprabhud/sp/grok
   sweep:
-    dir: /home/lilic/grok2/grok
-    subdir: /home/lilic/grok2/grok    
+    dir: /home/mprabhud/sp/grok
+    subdir: /home/mprabhud/sp/grok

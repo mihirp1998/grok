@@ -22,7 +22,6 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning.loggers import WandbLogger
-
 from torch import Tensor
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -56,15 +55,16 @@ class TrainableTransformer(LightningModule):
         hparams_dict = hparams
 
 
-
         for key in hparams.keys():
             self.hparams[key]=hparams_dict[key]
 
         # st()
         self.validation_step_outputs = []
         self.training_step_outputs = []
-
         self.prepare_data()
+
+        if not self.hparams.use_original_tokenizer:
+            self.logit_mask = torch.zeros(len(self.train_dataset.tokenizer.vocab_size), dtype=torch.float32)
 
         self.transformer = Transformer(
             hparams.n_layers,
@@ -83,6 +83,7 @@ class TrainableTransformer(LightningModule):
         self.next_train_epoch_to_log = 0
 
         self.trainer_step_val_dict = {}
+
 
     @staticmethod
     def add_model_specific_args(parser: ArgumentParser) -> ArgumentParser:
@@ -164,7 +165,26 @@ class TrainableTransformer(LightningModule):
             operator=self.hparams.math_operator,  # type: ignore
             operand_length=self.hparams.operand_length,  # type: ignore
             data_dir=self.hparams.datadir,  # type: ignore
+            max_context_len=self.hparams.max_context_len,  # type: ignore
+            use_original_tokenizer=self.hparams.use_original_tokenizer,  # type: ignore
         )
+        st()
+
+        if not self.hparams.use_original_tokenizer:
+            # iterate through all the data and put the seen tokens
+            # need to set the logit mask
+            seen_tokens = set()
+            for dataset in [self.train_dataset, self.val_dataset]:
+                for i in range(len(dataset)):
+                    for eqn in dataset.data[i]:
+                        for token in eqn.flatten():
+                            seen_tokens.add(token.item())
+            st()
+            # just keep seen_tokens as 0 and rest as -inf
+            self.logit_mask = torch.zeros(len(self.train_dataset.tokenizer.vocab_size), dtype=torch.float32)
+            # self.logit_mask[torch.tensor(list(seen_tokens))] = 0
+            self.logit_mask[~torch.tensor(list(seen_tokens))] = -float("inf")
+
 
     def train_dataloader(self) -> ArithmeticIterator:  # type: ignore
         """
@@ -330,11 +350,15 @@ class TrainableTransformer(LightningModule):
             y_hat, attentions, values = self(
                 x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping  # type: ignore
             )  # shape = batchsize * context_len * vocab_size
-        
+
         y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
         # Note: each sample must have exactly one '=' and all of them must
         # have it in the same position.
-        eq_token_index = self.train_dataset.tokenizer.stoi["="]
+        if self.hparams.use_original_tokenizer:
+            eq_token_index = self.train_dataset.tokenizer.stoi["="]
+        else:
+            eq_token_index = self.train_dataset.tokenizer.convert_tokens_to_ids("=")
+
         eq_position_t = torch.nonzero(y[0, :] == eq_token_index, as_tuple=False)
         eq_position = int(eq_position_t.squeeze())
 
@@ -342,13 +366,17 @@ class TrainableTransformer(LightningModule):
         y_rhs = y[..., eq_position + 1 :]
         y_hat_rhs = y_hat[..., eq_position + 1 :]
         x_lhs = x[..., : eq_position + 1]
-        # st()
+        st()
 
         if train:
             coeff = float(batch["target"].shape[0]) / len(self.train_dataset)
         else:
             coeff = float(batch["target"].shape[0]) / len(self.val_dataset)
-        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
+        if self.hparams.use_original_tokenizer:
+            ignore_index = -100
+        else:
+            ignore_index = self.train_dataset.tokenizer.pad_token_id
+        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction, ignore_index=ignore_index)
 
         with torch.no_grad():
             acc = self._accuracy(y_hat_rhs, y_rhs)
@@ -483,13 +511,13 @@ class TrainableTransformer(LightningModule):
             self.fwd_time_in_epoch = 0
 
         start = time.time()
-        
+
         loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
             batch=batch, batch_idx=batch_idx, train=True
         )
-        
-        
-        
+
+
+
         if self.hparams.forward_forward_mode:
             inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True
@@ -893,6 +921,11 @@ def train(hparams: Namespace) -> None:
 
     trainer = Trainer(**trainer_args)
 
+    csv_folder = os.path.join(hparams.logdir, hparams.group)
+    csv_folder = os.path.join(csv_folder, f'op_{hparams.math_operator}')
+    csv_path = os.path.join(csv_folder, f'val_{hparams.mode}.csv')
+    print(f"Saving to {csv_path}")
+
     trainer.fit(model=model)  # type: ignore
     """
     margin = np.percentile(model.margin.detach().cpu().numpy(), 5)
@@ -916,12 +949,10 @@ def train(hparams: Namespace) -> None:
     val_df = pd.DataFrame(model.trainer_step_val_dict).transpose()
     # make 0th col name steps
     val_df.index.name = "steps"
-    csv_folder = os.path.join(hparams.logdir, hparams.group)
     os.makedirs(csv_folder, exist_ok=True)
-    csv_folder = os.path.join(csv_folder, f'op_{hparams.math_operator}')
     os.makedirs(csv_folder, exist_ok=True)
-    csv_path = os.path.join(csv_folder, f'val_{hparams.mode}.csv')
     val_df.to_csv(csv_path)
+    print(f"Saved to {csv_path}")
     return hparams.logdir
 
 
