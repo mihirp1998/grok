@@ -155,10 +155,10 @@ class ArithmeticTokenizer:
 
     token_file = "tokens.txt"
 
-    def __init__(self, data_dir=DEFAULT_DATA_DIR) -> None:
+    def __init__(self, data_dir=DEFAULT_DATA_DIR, is_bijection=False) -> None:
         self.token_file = bf.join(data_dir, self.token_file)
 
-        self.itos = self.get_tokens()
+        self.itos = self.get_tokens(is_bijection=is_bijection)
 
         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
 

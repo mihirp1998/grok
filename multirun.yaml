@@ -110,6 +110,7 @@ hydra:
     - hydra/launcher=grogu
     - hydra.mode=MULTIRUN
     task:
+<<<<<<< HEAD
     - math_operator=x**3,pfactor
     - exp=f,ff
     - train_data_pct=50,70,90
@@ -122,6 +123,16 @@ hydra:
     name: main
     chdir: null
     override_dirname: d_model=128,256,exp=f,ff,group=c4,math_operator=x**3,pfactor,max_context_len=100,n_layers=2,4,train_data_pct=50,70,90,weight_decay=0.0,1.0
+=======
+    - math_operator=+
+    - exp=f
+    - train_data_pct=50
+    - group=c1
+  job:
+    name: main
+    chdir: null
+    override_dirname: exp=f,group=c1,math_operator=+,train_data_pct=50
+>>>>>>> fdb1e41dcb3b1a8704ea2b346b8d2550ac05207c
     id: ???
     num: ???
     config_name: config
