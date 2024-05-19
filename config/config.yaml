@@ -4,7 +4,7 @@ defaults:
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 debug: False
-random_seed: -1
+random_seed: 42
 embed_style: same
 gpu: 0
 max_steps: 100000 # 000
@@ -14,10 +14,19 @@ n_layers: 2
 n_heads: 4
 d_model: 128
 dropout: 0.0
+cyclic_consistency: False
+do_tta: False
 weight_noise: 0.0
 non_linearity: "relu"
 max_context_len: 50
 math_operator: "+"
+val_batchify: False
+f_coef: 1.0
+tta_coef: 1.0
+inv_coef: 1.0
+cc_coef: 1.0
+
+
 operand_length: 1
 train_data_pct: 80
 warmup_steps: 10
@@ -41,9 +50,9 @@ checkpoint_path: None
 
 
 hydra:
-  output_subdir: /home/mprabhud/phd_projects/grok
+  output_subdir: /home/mprabhud/phd_projects/grok/exps
   run:
-    dir: /home/mprabhud/phd_projects/grok
+    dir: /home/mprabhud/phd_projects/grok/exps
   sweep:
-    dir: /home/mprabhud/phd_projects/grok
-    subdir: /home/mprabhud/phd_projects/grok    
+    dir: /home/mprabhud/phd_projects/grok/exps
+    subdir: /home/mprabhud/phd_projects/grok/exps

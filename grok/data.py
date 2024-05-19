@@ -496,6 +496,7 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
         text = self.dataset.data[indices,:, :-1]
         target = self.dataset.data[indices,:, 1:]
         batch = {"text": text.to(self.device), "target": target.to(self.device)}
+        # st()
         self.index += 1
         return batch
 

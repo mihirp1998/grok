@@ -1,8 +1,8 @@
 defaults:
   - submitit_slurm
 signal_delay_s: 120
-timeout_min: 360
-partition: all
+timeout_min: 120
+partition: all,deepaklong
 gres: gpu:1
 cpus_per_task: 8
 mem_gb: 40

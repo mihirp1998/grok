@@ -378,7 +378,14 @@ class Transformer(nn.Module):
     def embed(self, indices: Tensor) -> Tensor:
         context_len = indices.shape[-1]
         pe = self.position_encoding[:context_len, :]  # type: ignore
-        embedded = self.embedding(indices)        
+        embedded = self.embedding(indices)
+        return pe + embedded
+
+    def embed_cc(self, indices: Tensor) -> Tensor:
+        st()
+        context_len = indices.shape[-1]
+        pe = self.position_encoding[:context_len, :]  # type: ignore
+        embedded = torch.nn.functional.one_hot(indices,self.embedding.weight.shape[0]).float() @ self.embedding.weight
         return pe + embedded
 
     def embed_transpose(self, indices: Tensor) -> Tensor:
@@ -397,6 +404,8 @@ class Transformer(nn.Module):
         self,
         x: Tensor,
         pos: int = None,
+        cc=False,
+        cc_dict = None,
         inverse_mapping=False,
         save_activations: bool = False,
     ) -> Tuple[Tensor, Union[Tensor, None], Union[Tensor, None]]:
@@ -406,28 +415,48 @@ class Transformer(nn.Module):
 
         # Make sure sampling inputs are on the correct device
         x = x.to(self.embedding.weight.device)
-        
-        # st()
+
         # make_attention mask
         this_max_context_len = x.shape[-1]
         self_attn_mask = self.self_attn_mask[  # type: ignore
             :this_max_context_len, :this_max_context_len
         ]
+        
+        # st()
 
         # Decode
-        if inverse_mapping:
-            # st()
-            if self.embed_style == "same":
-                x = self.embed(x)
-            elif self.embed_style == "seperate":
-                x = self.embed_seperate(x)
-            elif self.embed_style == "transpose":
-                x = self.embed_transpose(x)
-            else:
-                assert False
+        if cc:
+            assert self.embed_style == "same"
+            eos_token_ = torch.nn.functional.one_hot(cc_dict['eos_token'],self.embedding.weight.shape[0]).float()
+            eq_token_ = torch.nn.functional.one_hot(cc_dict['eq_token_index'],self.embedding.weight.shape[0]).float()
+            x_lhs_ = torch.nn.functional.one_hot(cc_dict['x_lhs'],self.embedding.weight.shape[0]).float()
+            
+            y_hat_gt = torch.nn.functional.one_hot(cc_dict['y_rhs'],self.embedding.weight.shape[0]).float()
+            y_hat_ = cc_dict['y_hat_rhs'].softmax(1)[:,:,0][:,None,:]
+            
+            data = torch.cat([eos_token_, y_hat_, eq_token_, x_lhs_, eos_token_], dim=1)
+            x_probs = data[:,:-1]
+            
+            context_len = x_probs.shape[-2]
+            pe = self.position_encoding[:context_len, :]  # type: ignore
+            embedded = x_probs @ self.embedding.weight
+            
+            x = pe + embedded
         else:
-            # st()
-            x = self.embed(x)
+            if inverse_mapping:
+                # st()
+                if self.embed_style == "same":
+                    x = self.embed(x)
+                elif self.embed_style == "seperate":
+                    x = self.embed_seperate(x)
+                elif self.embed_style == "transpose":
+                    x = self.embed_transpose(x)
+                else:
+                    assert False
+            else:
+                # st()
+                x = self.embed(x)
+                # st()
 
 
             
