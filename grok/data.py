@@ -40,9 +40,17 @@ VALID_OPERATORS = {
     "2x" : "2x",
     "x**3" : "x**3",
     "2x+1" : "2x+1",
+    "x+11" : "x+11",
     "sort": "sort",
     "reverse": "reverse",
     "copy": "copy",
+    "caesarcipher": "caesarcipher",
+    "permutev1": "permutev1",
+    "permutev2": "permutev2",
+    "permutev3": "permutev3",
+    "strdeletev1": "strdeletev1",
+    "strdeletev2": "strdeletev2",
+    "caesarcipher_permutev1": "caesarcipher_permutev1"
 }
 EOS_TOKEN = "<|eos|>"
 EQ_TOKEN = "="
@@ -50,7 +58,7 @@ MODULUS = 97
 NUMS = list(range(MODULUS))
 MODULUS_BIJECTIONS = 10
 NUMS_BIJECTIONS = list(range(MODULUS_BIJECTIONS))
-BIJECTIVE_OPERATORS = ["pfactor", "2x", "x**3", "2x+1"]
+BIJECTIVE_OPERATORS = ["pfactor", "2x", "x**3", "2x+1", "x+11"]
 
 DEFAULT_DATA_DIR = "data"
 
@@ -89,14 +97,27 @@ class ArithmeticTokenizerDigits:
         self.max_length = max_length
         self.max_digits = max_digits
 
+    # def _encode(self, s: str) -> Tensor:
+    #     output = np.ones(self.max_length)*0 # using EOS token for padding
+    #     for i, t in enumerate(s.split(" ")):
+    #         if t.isdigit():
+    #             for j, c in enumerate(reversed(t)):
+    #                 output[i*self.max_digits+j] = self.stoi[c]
+    #         else:
+    #             output[i*self.max_digits] = self.stoi[t]
+    #     return LongTensor(output)
+
     def _encode(self, s: str) -> Tensor:
         output = np.ones(self.max_length)*0 # using EOS token for padding
-        for i, t in enumerate(s.split(" ")):
+        ctr = 0
+        for t in s.split(" "):
             if t.isdigit():
-                for j, c in enumerate(reversed(t)):
-                    output[i*self.max_digits+j] = self.stoi[c]
+                for c in reversed(t):
+                    output[ctr] = self.stoi[c]
+                    ctr += 1
             else:
-                output[i*self.max_digits] = self.stoi[t]
+                output[ctr] = self.stoi[t]
+                ctr += 1
         return LongTensor(output)
 
     def encode(self, obj: Union[str, List]) -> Tensor:
@@ -261,6 +282,8 @@ class ArithmeticDataset:
             self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
         elif operator == '2x+1':
             self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+        elif operator == 'x+11':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
         elif operator == 'x**3':
             self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
         elif operator == 'pfactor':
@@ -373,6 +396,10 @@ class ArithmeticDataset:
             operands= torch.tensor(list(range(10000-1))).unsqueeze(-1)
             rhs = [[(i.item())*2+1] for i in operands]
             rhs_list = rhs
+        elif operator == "x+11":
+            operands= torch.tensor(list(range(10000))).unsqueeze(-1)
+            rhs = [[(i.item())+11] for i in operands]
+            rhs_list = rhs
         elif operator == "x**3":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [[(i.item())**3] for i in operands]
@@ -383,13 +410,51 @@ class ArithmeticDataset:
             rhs_list = rhs
         else:
             elems = map(np.array, itertools.permutations(list(range(5))))
-            operands = torch.stack([torch.from_numpy(i) for i in elems])            
+            operands = torch.stack([torch.from_numpy(i) for i in elems])           
             if operator == "sort":
                 rhs = torch.sort(operands, dim=1)[0]                
             elif operator == "reverse":
                 rhs = torch.flip(operands, dims=(1,))
             elif operator == "copy":
                 rhs = operands
+            elif operator == 'caesarcipher_permutev1': # since this is first it won't go into the permute case
+                elems = map(np.array, itertools.permutations(list(range(5))))
+                operands = [torch.from_numpy(i) for i in elems]
+                rhs = []
+                for i in operands:
+                    rhs.append([(i[1] + 1) % 5, (i[0] + 1) % 5, (i[2] + 1) % 5, (i[3] + 1) % 5, (i[4] + 1) % 5])
+                operands = torch.stack(operands)
+                rhs = torch.tensor(rhs)
+            elif operator == 'caesarcipher':
+                rhs = (operands + 1) % 5
+            elif 'permute' in operator:
+                elems = map(np.array, itertools.permutations(list(range(5))))
+                operands = [torch.from_numpy(i) for i in elems]
+                rhs = []
+                for i in operands:
+                    if operator == 'permutev1':
+                        rhs.append([i[1], i[0], i[2], i[3], i[4]])
+                    elif operator == 'permutev2':
+                        rhs.append([i[1], i[0], i[3], i[4], i[2]])
+                    elif operator == 'permutev3':
+                        rhs.append([i[4], i[0], i[1], i[2], i[3]])
+                    else:
+                        raise NotImplementedError
+                operands = torch.stack(operands)
+                rhs = torch.tensor(rhs)
+            elif 'strdelete' in operator:
+                elems = map(np.array, itertools.permutations(list(range(5))))
+                operands = [torch.from_numpy(i) for i in elems]
+                rhs = []
+                for i in operands:
+                    if operator == 'strdeletev1':
+                        rhs.append([0, i[1], i[2], i[3], i[4]])
+                    elif operator == 'strdeletev2':
+                        rhs.append([0, 0, i[2], i[3], i[4]])
+                    else:
+                        raise NotImplementedError
+                operands = torch.stack(operands)
+                rhs = torch.tensor(rhs)
             else:
                 raise Exception("unsupported operator")
             rhs_list = rhs.tolist()
@@ -460,7 +525,7 @@ class ArithmeticDataset:
         assert operator in VALID_OPERATORS
         
         
-        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
+        if operator not in ["sort", "reverse", "copy","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
             data = cls._make_binary_operation_data(operator)
         else:
             # st()

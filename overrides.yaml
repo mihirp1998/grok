@@ -1,8 +1,5 @@
-- math_operator=pfactor
+- math_operator=caesarcipher_permutev1
 - exp=ff
-- train_data_pct=50
-- group=c4
-- max_context_len=100
+- train_data_pct=80
+- group=c10
 - weight_decay=1.0
-- d_model=256
-- n_layers=4

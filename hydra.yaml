@@ -110,20 +110,17 @@ hydra:
     - hydra/launcher=grogu
     - hydra.mode=MULTIRUN
     task:
-    - math_operator=pfactor
+    - math_operator=caesarcipher_permutev1
     - exp=ff
-    - train_data_pct=50
-    - group=c4
-    - max_context_len=100
+    - train_data_pct=80
+    - group=c10
     - weight_decay=1.0
-    - d_model=256
-    - n_layers=4
   job:
     name: main
     chdir: null
-    override_dirname: d_model=256,exp=ff,group=c4,math_operator=pfactor,max_context_len=100,n_layers=4,train_data_pct=50,weight_decay=1.0
-    id: '1679905_79'
-    num: 79
+    override_dirname: exp=ff,group=c10,math_operator=caesarcipher_permutev1,train_data_pct=80,weight_decay=1.0
+    id: '1680988_47'
+    num: 47
     config_name: config
     env_set: {}
     env_copy: []
