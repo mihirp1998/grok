@@ -50,6 +50,10 @@ VALID_OPERATORS = {
 EOS_TOKEN = "<|endoftext|>" # in line with gpt2
 SOS_TOKEN = "<|startoftext|>" # in line with gpt2
 PAD_TOKEN = "<|pad|>"
+DOT = "."
+E_TOKEN = 'e'
+MINUS_TOKEN = "-"
+PLUS_TOKEN = "+"
 EQ_TOKEN = "="
 MODULUS = 97
 NUMS = list(range(MODULUS))
@@ -84,7 +88,7 @@ class ArithmeticTokenizerDigits:
 
     token_file = "tokens.txt"
 
-    def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4) -> None:
+    def __init__(self, data_dir=DEFAULT_DATA_DIR, max_length=50, max_digits=4, use_regression=False) -> None:
         self.token_file = bf.join(data_dir, self.token_file)
 
         self.itos = self.get_tokens()
@@ -93,13 +97,21 @@ class ArithmeticTokenizerDigits:
 
         self.max_length = max_length
         self.max_digits = max_digits
+        self.use_regression = use_regression
 
     def _encode(self, s: str) -> Tensor:
+        def is_float(s):
+            try:
+                float(s)
+                return True
+            except ValueError:
+                return False
+
         output = np.ones(self.max_length)*self.stoi[PAD_TOKEN]
         ctr = 0
         s = s.strip()
         for t in s.split(" "):
-            if t.isdigit():
+            if t.isdigit() or is_float(t):
                 for c in t:
                     output[ctr] = self.stoi[c]
                     ctr += 1
@@ -121,6 +133,12 @@ class ArithmeticTokenizerDigits:
         if isinstance(obj, str):
             return self._encode(obj)
         elif isinstance(obj, list):
+            if self.use_regression:
+                return (
+                    torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj]),
+                    torch.stack([torch.stack([torch.tensor(s[2], dtype=torch.float32),torch.tensor(s[3], dtype=torch.float32)]) for s in obj]) # forward and backward targets in numbers
+                )
+
             return torch.stack([torch.stack([self._encode(s[0]),self._encode(s[1])]) for s in obj])
         else:
             raise NotImplementedError
@@ -153,7 +171,7 @@ class ArithmeticTokenizerDigits:
     @classmethod
     def get_tokens(cls):
         tokens = (
-            [SOS_TOKEN, EOS_TOKEN, EQ_TOKEN, SPACE, PAD_TOKEN]
+            [SOS_TOKEN, EOS_TOKEN, EQ_TOKEN, SPACE, DOT, E_TOKEN, MINUS_TOKEN, PLUS_TOKEN, PAD_TOKEN]
             + list(sorted(list(VALID_OPERATORS.keys())))
             + list(map(render, NUMS_BIJECTIONS))
             + ['']
@@ -238,6 +256,8 @@ class ArithmeticDataset:
         data_dir: str = DEFAULT_DATA_DIR,
         max_context_len: int = 50,
         use_original_tokenizer: bool = False,
+        use_regression: bool = False,
+        hparams = {}
     ):
         """
         Creates training and validation datasets
@@ -249,13 +269,12 @@ class ArithmeticDataset:
         """
 
         assert (0 < train_pct) and (train_pct < 100)
-
         ds_name = cls.get_dsname(operator, operand_length)
-        eqs = cls.make_data(operator, operand_length)
+        eqs = cls.make_data(operator, operand_length, hparams=hparams)
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
-        train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator, max_context_len=max_context_len, use_original_tokenizer=use_original_tokenizer)
-        val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator, max_context_len=max_context_len, use_original_tokenizer=use_original_tokenizer)
+        train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator, max_context_len=max_context_len, use_original_tokenizer=use_original_tokenizer, use_regression=use_regression, hparams=hparams)
+        val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator, max_context_len=max_context_len, use_original_tokenizer=use_original_tokenizer, use_regression=use_regression, hparams=hparams)
         return train_ds, val_ds
 
     @classmethod
@@ -264,11 +283,13 @@ class ArithmeticDataset:
         val_rows = ds_len - train_rows
         return train_rows, val_rows
 
-    def __init__(self, name, data: Union[Tensor, List[str]], train, data_dir, operator, max_context_len, use_original_tokenizer) -> None:
+    def __init__(self, name, data: Union[Tensor, List[str]], train, data_dir, operator, max_context_len, use_original_tokenizer, use_regression, hparams) -> None:
         """
         :param data: A list of equations strings. Each equation must have an '=' in it.
         """
+        self.hparams = hparams
         self.max_context_len = max_context_len
+        self.use_regression = use_regression
         # if operator in ['2x','2x+1','x**3','pfactor']:
         # gp2 tokenizer with max_context_length, and padding to max_length with EOS tokens
         # if not use_original_tokenizer:
@@ -276,14 +297,15 @@ class ArithmeticDataset:
             # self.tokenizer.pad_token = self.tokenizer.eos_token
             # EOS_TOKEN = self.tokenizer.eos_token # have hardcoded this to gpt2 eos token
         if operator == '2x':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4, use_regression=self.use_regression)
         elif operator == '2x+1':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4)
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4, use_regression=self.use_regression)
         elif operator == 'x**3':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12)
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12, use_regression=self.use_regression)
         elif operator == 'pfactor':
-            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4)
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=4, use_regression=self.use_regression)
         else:
+            # binary case regression wont work
             self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
         self.train = train
@@ -309,6 +331,8 @@ class ArithmeticDataset:
         """
         :returns: total number of equations in this dataset
         """
+        if self.use_regression:
+            return self.data[0].shape[0]
         return self.data.shape[0]
 
     # @classmethod
@@ -320,7 +344,7 @@ class ArithmeticDataset:
     #    return " ".join(map(render, parts))
 
     @classmethod
-    def _make_binary_operation_data(cls, operator: str, operands=None) -> List[str]:
+    def _make_binary_operation_data(cls, operator: str, operands=None, hparams=None) -> List[str]:
         if operator == "s5":
             operands = operands or list(range(5))
             elems = map(np.array, itertools.permutations(operands))
@@ -374,7 +398,7 @@ class ArithmeticDataset:
                 c = eval(f"({a} {operator} {b}) % {MODULUS}")
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
-            eqs.append([eq,invert_eq])
+            eqs.append([eq,invert_eq]) # warning does not work with regression
 
 
 
@@ -387,7 +411,7 @@ class ArithmeticDataset:
     #    return " ".join([operator, render(lhs), "=", render(rhs)])
 
     @staticmethod
-    def _make_unary_operation_data(operator: str, operands: Tensor) -> List[str]:
+    def _make_unary_operation_data(operator: str, operands: Tensor, hparams=None) -> List[str]:
         """
         :param operator: The unary operator to apply to each operand e.g. '+'
         :param operands: A tensor of operands
@@ -395,33 +419,71 @@ class ArithmeticDataset:
         # operands = list(range(4))
         # st()
 
+        def normalize(lst):
+            # given a list of numbers as [[1], [2], [3], ...]
+            # normalize them using (x - min) / (max - min)
+
+            # get the min and max
+            mi, ma = min(lst), max(lst)
+            for i, item in enumerate(lst):
+                lst[i] = [(item[0] - mi[0]) / (ma[0] - mi[0])]
+            print(f'min: {mi}, max: {ma}'.center(100, '-'))
+            return lst
+
         if operator == "2x":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [[(i.item())*2] for i in operands]
-            rhs_list = rhs
         elif operator == "2x+1":
             operands= torch.tensor(list(range(10000-1))).unsqueeze(-1)
             rhs = [[(i.item())*2+1] for i in operands]
-            rhs_list = rhs
+            rhs_list = normalize(rhs)
         elif operator == "x**3":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [[(i.item())**3] for i in operands]
-            rhs_list = rhs
+            rhs_list = normalize(rhs)
         elif operator == "pfactor":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [list(primefac.primefac(i.item())) for i in operands]
             rhs_list = rhs
         else:
-            elems = map(np.array, itertools.permutations(list(range(5))))
+            # list operations
+            list_len = 5 if not hparams else hparams.get("data_list_len", 5)
+            elems = map(np.array, itertools.permutations(list(range(list_len))))
             operands = torch.stack([torch.from_numpy(i) for i in elems])
+            st()
             if operator == "sort":
                 rhs = torch.sort(operands, dim=1)[0]
             elif operator == "reverse":
                 rhs = torch.flip(operands, dims=(1,))
             elif operator == "copy":
                 rhs = operands
+            elif operator == 'interleaved_halves':
+                even_indices = torch.arange(0, list_len, 2)  # indices for even index elements: 0, 2, 4, ...
+                odd_indices = torch.arange(1, list_len, 2)   # indices for odd index elements: 1, 3, 5, ...
+                interleaved_indices = torch.cat((even_indices, odd_indices))  # concatenate indices
+                rhs = operands[:, interleaved_indices]
+            elif operator == 'reverse_pool':
+                k = hparams.get("k", 3)
+                # each sets of k elements are reversed
+                rhs = torch.cat([torch.flip(operands[:, i:i+k], dims=(1,)) for i in range(0, list_len, k)], dim=1)
+            elif operator == 'k_shift':
+                # shift each list by k to the left
+                k = hparams.get("k", 3)
+                rhs = torch.cat([torch.roll(operands, shifts=-k, dims=1)], dim=1)
+            elif operator == 'random_swaps':
+                # make a unique random mapping for each index to another index making sure that it's cyclic
+                generator = torch.Generator().manual_seed(hparams.get("seed", 42))
+                rp = torch.randperm(list_len, generator=generator)
+                mp = {}
+                for i, j in enumerate(rp):
+                    mp[i+1] = j # since we are using 1 based indexing for the list
+                print(f'Random mapping: {mp}'.center(100, '-') )
+                rhs = torch.tensor([[mp[i.item()] for i in row] for row in operands])
+            elif operator == 'idx_add':
+                # add the index to each element
+                rhs = operands + torch.arange(list_len)
             else:
-                raise Exception("unsupported operator")
+                raise NotImplementedError, f"Operator {operator} not implemented"
             rhs_list = rhs.tolist()
         num_examples = operands.shape[0]
 
@@ -434,7 +496,7 @@ class ArithmeticDataset:
         # st()
         if num_examples < 1000000000:
             eqs = [
-                (func(L, R),func(R,L))
+                (func(L, R),func(R,L), R[0], L[0])
                 for L, R in tqdm(
                     zip(operands.tolist(), rhs_list), total=num_examples
                 )
@@ -442,7 +504,7 @@ class ArithmeticDataset:
         else:
             with ProcessPoolExecutor() as executor:
                 eqs = executor.map(func, tqdm(zip(operands, rhs), total=num_examples))
-        # st()
+        st()
         return eqs
 
     # @staticmethod
@@ -485,17 +547,15 @@ class ArithmeticDataset:
             return operator, 0
 
     @classmethod
-    def make_data(cls, operator, operands=None, shuffle=True, seed=0) -> List[str]:
+    def make_data(cls, operator, operands=None, shuffle=True, seed=0, hparams=None) -> List[str]:
         operator, noise_level = cls._get_operator_and_noise_level(operator)
         assert operator in VALID_OPERATORS
 
-
+        st()
         if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
-            data = cls._make_binary_operation_data(operator)
+            data = cls._make_binary_operation_data(operator, hparams)
         else:
-            # st()
-            data = cls._make_unary_operation_data(operator, operands)
-        # st()
+            data = cls._make_unary_operation_data(operator, operands, hparams)
         rng = np.random.RandomState(seed=seed)
         if shuffle:
             rng.shuffle(data)
@@ -508,7 +568,11 @@ class ArithmeticDataset:
             for i in range(noise_level):
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
         # st()
-        data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
+        if operator in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
+            # unary, regression possible, eq[2] = forward target (int/float) and eq3[] = backward target (int/float)
+            data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN, eq[2], eq[3]] for eq in data]
+        else:
+            data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
         # st()
         return data
 
@@ -551,6 +615,7 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
         device: torch.device,
         batchsize_hint: float = 0,
         shuffle: bool = True,
+        use_regression: bool = False,
     ) -> None:
         """
         :param dataset: the dataset to iterate over
@@ -563,6 +628,7 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
         :param shuffle: whether or not to randomly shuffle the dataset
         """
         self.dataset = dataset
+        self.use_regression = use_regression
         self.batchsize = self.calculate_batchsize(
             len(dataset), batchsize_hint=batchsize_hint
         )
@@ -614,16 +680,22 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
         :raises: StopIteration when we're out of data
         :returns: batch tensor of shape (self.batchsize, tokens_per_eq)
         """
-
         batch_begin = self.index * self.batchsize
         if batch_begin > len(self.dataset) - 1:
             self.reset_iteration()
             raise StopIteration
         indices = self.permutation[batch_begin : batch_begin + self.batchsize]
-        # st()
-        text = self.dataset.data[indices,:, :-1]
-        target = self.dataset.data[indices,:, 1:]
-        batch = {"text": text.to(self.device), "target": target.to(self.device)}
+        if self.use_regression:
+            text = self.dataset.data[0][indices,:, :-1]
+            target = self.dataset.data[0][indices,:, 1:]
+            forward_reg_target = self.dataset.data[1][indices, 0]
+            backward_reg_target = self.dataset.data[1][indices, 1]
+            batch = {"text": text.to(self.device), "target": target.to(self.device), "forward_reg_target": forward_reg_target.to(self.device), "backward_reg_target": backward_reg_target.to(self.device)}
+        else:
+            text = self.dataset.data[indices,:, :-1]
+            target = self.dataset.data[indices,:, 1:]
+
+            batch = {"text": text.to(self.device), "target": target.to(self.device)}
         self.index += 1
         return batch
 

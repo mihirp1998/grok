@@ -28,7 +28,7 @@ forward_forward_mode: False
 reverse_mode: False
 anneal_lr: True
 max_lr: 1e-3
-weight_decay: 1
+weight_decay: 0.1
 weight_decay_kind: to_zero
 noise_factor: 0
 save_activations: False
@@ -38,7 +38,9 @@ datadir: data
 d_key: -1
 checkpoint_path: None
 use_original_tokenizer: True
-
+use_regression: False
+data_list_len: 5
+k: 3
 
 hydra:
   output_subdir: /home/mprabhud/sp/grok

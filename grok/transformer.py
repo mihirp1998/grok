@@ -356,8 +356,9 @@ class Transformer(nn.Module):
         self.use_regression = use_regression
         if use_regression:
             # (b,t,d) -> (b,1)
+            print('Using regression'.center(100,'-'))
             self.pooling = nn.AdaptiveAvgPool1d(1)  # Mean pooling
-            self.linear = Linear(d_model, 1, bias=False, weight_noise=weight_noise)
+            self.reg_head = Linear(d_model, 1, bias=False, weight_noise=weight_noise)
 
 
 
@@ -451,6 +452,11 @@ class Transformer(nn.Module):
         if pos is not None:
             decoded = decoded[:, pos, :]
 
+        if self.use_regression:
+            # (b,t,d) -> (b,d) -> (b,1)
+            y_hat = self.pooling(decoded.permute(0,2,1)).squeeze(-1) # ()
+            y_hat = self.reg_head(y_hat)
+            return y_hat, attentions, values
 
         if inverse_mapping:
             # st()
@@ -464,10 +470,6 @@ class Transformer(nn.Module):
                 assert False
         else:
             y_hat = self.linear(decoded)
-
-        if self.use_regression:
-            y_hat = self.pooling(y_hat.permute(0,2,1)).squeeze(-1) # ()
-            y_hat = self.linear(y_hat)
 
         return y_hat, attentions, values
 

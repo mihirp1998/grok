@@ -77,6 +77,7 @@ class TrainableTransformer(LightningModule):
             hparams.embed_style,
             hparams.non_linearity,
             weight_noise=self.hparams.weight_noise,
+            use_regression=self.hparams.use_regression,
         )
 
         self.margin = torch.Tensor([0])
@@ -168,8 +169,9 @@ class TrainableTransformer(LightningModule):
             data_dir=self.hparams.datadir,  # type: ignore
             max_context_len=self.hparams.max_context_len,  # type: ignore
             use_original_tokenizer=self.hparams.use_original_tokenizer,  # type: ignore
+            use_regression=self.hparams.use_regression,  # type: ignore
+            hparams = self.hparams
         )
-
         if not self.hparams.use_original_tokenizer:
             # iterate through all the data and put the seen tokens
             # need to set the logit mask
@@ -200,6 +202,7 @@ class TrainableTransformer(LightningModule):
             self.train_dataset,
             device,
             batchsize_hint=self.hparams.batchsize,  # type: ignore
+            use_regression=self.hparams.use_regression,  # type: ignore
         )
         # st()
         self.train_batchsize = iterator.batchsize
@@ -218,6 +221,7 @@ class TrainableTransformer(LightningModule):
             self.val_dataset,
             device,
             batchsize_hint=-1,  # no need to batch validation data
+            use_regression=self.hparams.use_regression,  # type: ignore
         )
         return iterator
 
@@ -229,7 +233,8 @@ class TrainableTransformer(LightningModule):
         """
         device = self.transformer.embedding.weight.device
         iterator = ArithmeticIterator(
-            self.val_dataset, device, batchsize_hint=-1  # type: ignore
+            self.val_dataset, device, batchsize_hint=-1,  # type: ignore
+            use_regression=self.hparams.use_regression,  # type: ignore
         )
         return iterator
 
@@ -347,6 +352,7 @@ class TrainableTransformer(LightningModule):
             x = batch["text"][:,0]  # shape = batchsize * context_len
             y = batch["target"][:,0]  # shape = batchsize * context_len
         # st()
+
         if reverse_mode:
             y_hat, attentions, values = self.transformer.reverse(x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping)
         else:
@@ -354,7 +360,6 @@ class TrainableTransformer(LightningModule):
                 x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping  # type: ignore
             )  # shape = batchsize * context_len * vocab_size
 
-        y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
         # Note: each sample must have exactly one '=' and all of them must
         # have it in the same position.
         if self.hparams.use_original_tokenizer:
@@ -365,64 +370,83 @@ class TrainableTransformer(LightningModule):
         eq_position = int(eq_position_t.squeeze())
 
         # only calculate loss/accuracy on right hand side of the equation
-        y_rhs = y[..., eq_position + 1 :]
-        y_hat_rhs = y_hat[..., eq_position + 1 :]
+        if not self.hparams.use_regression:
+            y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
+            y_rhs = y[..., eq_position + 1 :]
+            y_hat_rhs = y_hat[..., eq_position + 1 :]
         x_lhs = x[..., : eq_position + 1]
 
         if train:
             coeff = float(batch["target"].shape[0]) / len(self.train_dataset)
         else:
             coeff = float(batch["target"].shape[0]) / len(self.val_dataset)
+
+
         if self.hparams.use_original_tokenizer:
             ignore_index = -100
         else:
             ignore_index = self.train_dataset.tokenizer.pad_token_id
+
         if not self.hparams.use_original_tokenizer:
             # hf tokenizer used, masking out all unused tokens not present in data to help convergence
             y_hat_rhs = y_hat_rhs + self.logit_mask
-        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction, ignore_index=ignore_index)
 
-        with torch.no_grad():
-            acc = self._accuracy(y_hat_rhs, y_rhs)
-            if reduction == "mean":
-                acc = acc.mean()
+        if self.hparams.use_regression:
+            forward_reg_target = batch['forward_reg_target']
+            backward_reg_target = batch['backward_reg_target']
+            if inverse_mapping:
+                tar = backward_reg_target
+            else:
+                tar = forward_reg_target
+            y_hat = y_hat.squeeze()
+            loss = F.mse_loss(y_hat, tar, reduction=reduction)
+            acc = torch.tensor(0)
+            return loss, acc, coeff, x_lhs, y_hat, y_hat, attentions, values
+        else:
+            loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction, ignore_index=ignore_index)
 
-        """
-        device = self.transformer.embedding.weight.device
-        self.margin = self.margin.to(device)
+            with torch.no_grad():
+                acc = self._accuracy(y_hat_rhs, y_rhs)
+                if reduction == "mean":
+                    acc = acc.mean()
 
-        output = y_hat_rhs.clone()  # batchsize, vocabsize, rhs tokens
-        output_m = output.clone()  # batchsize, vocabsize, rhs tokens
-        target = y_rhs.clone()  # batchsize, rhs tokens
+            """
+            device = self.transformer.embedding.weight.device
+            self.margin = self.margin.to(device)
 
-        for i in range(output.size(0)):  # batch
-            for j in range(output.size(2)):  # rhs tokens
-                output_m[i, target[i, j], j] = output_m[i, :, j].min()
+            output = y_hat_rhs.clone()  # batchsize, vocabsize, rhs tokens
+            output_m = output.clone()  # batchsize, vocabsize, rhs tokens
+            target = y_rhs.clone()  # batchsize, rhs tokens
 
-        for i in range(output.size(2)):  # rhs tokens
-            output_compressed = output[:, target[:, i], i].squeeze().diag()
-            output_m_compressed = (
-                output_m[:, output_m.max(dim=1).indices[:, i], i].squeeze().diag()
-            )
-            self.margin = torch.cat(
-                (
-                    self.margin,
-                    (output_compressed - output_m_compressed),
-                ),
-                0,
-            )
-        """
-        grad_vec = None
-        if grads:
-            loss.backward()
-            for p in self.parameters():
-                p.grad.data.div_(batch["text"].shape[0])
-                if grad_vec is None:
-                    grad_vec = p.grad.data.view(-1)
-                else:
-                    grad_vec = torch.cat((grad_vec, p.grad.data.view(-1)))
-            return loss, grad_vec
-        return loss, acc, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values
+            for i in range(output.size(0)):  # batch
+                for j in range(output.size(2)):  # rhs tokens
+                    output_m[i, target[i, j], j] = output_m[i, :, j].min()
+
+            for i in range(output.size(2)):  # rhs tokens
+                output_compressed = output[:, target[:, i], i].squeeze().diag()
+                output_m_compressed = (
+                    output_m[:, output_m.max(dim=1).indices[:, i], i].squeeze().diag()
+                )
+                self.margin = torch.cat(
+                    (
+                        self.margin,
+                        (output_compressed - output_m_compressed),
+                    ),
+                    0,
+                )
+            """
+            grad_vec = None
+            if grads:
+                loss.backward()
+                for p in self.parameters():
+                    p.grad.data.div_(batch["text"].shape[0])
+                    if grad_vec is None:
+                        grad_vec = p.grad.data.view(-1)
+                    else:
+                        grad_vec = torch.cat((grad_vec, p.grad.data.view(-1)))
+                return loss, grad_vec
+            st()
+            return loss, acc, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values
 
 
     def _save_inputs(self, outputs: Dict, ds: str) -> None:
@@ -509,7 +533,6 @@ class TrainableTransformer(LightningModule):
         :returns: a dict with loss, accuracy, lr, probabilities of solutions,
                   attentions, and values
         """
-        # st()
         if batch_idx == 0:
             self.training_epoch_start_time = time.time()
             self.fwd_time_in_epoch = 0
@@ -647,7 +670,6 @@ class TrainableTransformer(LightningModule):
         :returns: a dict with val_loss, val_accuracy, probabilities of solutions,
                   attentions, and values
         """
-        # st()
         if self.next_epoch_to_eval < self.current_epoch:
             self.next_epoch_to_eval = self.current_epoch
         if self.current_epoch != self.next_epoch_to_eval:
@@ -753,9 +775,15 @@ class TrainableTransformer(LightningModule):
             # st()
             # train accuracy
             device = self.transformer.embedding.weight.device
-            train_data = self.train_dataset.data.to(device)
-            training_data = {"text": train_data[:,:, :-1], "target": train_data[:,:, 1:]}
-            # st()
+            if self.hparams.use_regression:
+                text = self.train_dataset.data[0][:,:, :-1]
+                target = self.train_dataset.data[0][:,:, 1:]
+                forward_reg_target = self.train_dataset.data[1][:, 0]
+                backward_reg_target = self.train_dataset.data[1][:, 1]
+                training_data = {"text": text.to(self.device), "target": target.to(self.device), "forward_reg_target": forward_reg_target.to(self.device), "backward_reg_target": backward_reg_target.to(self.device)}
+            else:
+                train_data = self.train_dataset.data.to(device)
+                training_data = {"text": train_data[:,:, :-1], "target": train_data[:,:, 1:]}
             with torch.no_grad():
                 # st()
                 tr_loss, tr_acc, *_ = self._step(training_data, 0)
@@ -1036,6 +1064,7 @@ def compute_sharpness(hparams: Namespace, ckpts) -> None:
         phi = get_sharpness(model.train_dataloader(), model)
         results = {}
         results[ckpt] = phi
+        i=0
         pickle.dump(results, open(f"results/results_SD-{i}.pkl", "wb"))
 
 

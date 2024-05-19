@@ -84,14 +84,13 @@ hydra:
     hydra:
     - hydra.mode=RUN
     task:
-    - max_context_len=100
-    - math_operator=x**3
-    - n_heads=8
-    - n_layers=12
+    - math_operator=reverse
+    - data_list_len=10
+    - debug=True
   job:
     name: main
     chdir: null
-    override_dirname: math_operator=x**3,max_context_len=100,n_heads=8,n_layers=12
+    override_dirname: data_list_len=10,debug=True,math_operator=reverse
     id: ???
     num: ???
     config_name: config
