@@ -20,11 +20,15 @@ weight_noise: 0.0
 non_linearity: "relu"
 max_context_len: 50
 math_operator: "+"
-val_batchify: False
+val_batchify: True
 f_coef: 1.0
 tta_coef: 1.0
 inv_coef: 1.0
 cc_coef: 1.0
+
+forward_train: False
+inverse_train: False
+tta_train: False
 
 
 operand_length: 1
