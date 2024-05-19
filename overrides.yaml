@@ -1,3 +1,4 @@
 - math_operator=reverse
 - data_list_len=10
 - debug=True
+- math_operator=sort

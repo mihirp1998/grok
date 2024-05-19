@@ -12,7 +12,7 @@ dropout: 0.2
 weight_noise: 0.0
 non_linearity: relu
 max_context_len: 50
-math_operator: reverse
+math_operator: sort
 operand_length: 1
 train_data_pct: 80
 warmup_steps: 10
@@ -35,4 +35,5 @@ checkpoint_path: None
 use_original_tokenizer: true
 use_regression: false
 data_list_len: 10
+k: 3
 mode: f

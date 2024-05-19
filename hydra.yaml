@@ -87,10 +87,11 @@ hydra:
     - math_operator=reverse
     - data_list_len=10
     - debug=True
+    - math_operator=sort
   job:
     name: main
     chdir: null
-    override_dirname: data_list_len=10,debug=True,math_operator=reverse
+    override_dirname: data_list_len=10,debug=True,math_operator=reverse,math_operator=sort
     id: ???
     num: ???
     config_name: config

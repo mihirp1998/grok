@@ -46,6 +46,11 @@ VALID_OPERATORS = {
     "sort": "sort",
     "reverse": "reverse",
     "copy": "copy",
+    'interleaved_halves': 'interleaved_halves',
+    'reverse_pool': 'reverse_pool',
+    'k_shift': 'k_shift',
+    'random_swaps': 'random_swaps',
+    'idx_add': 'idx_add'
 }
 EOS_TOKEN = "<|endoftext|>" # in line with gpt2
 SOS_TOKEN = "<|startoftext|>" # in line with gpt2
@@ -450,9 +455,10 @@ class ArithmeticDataset:
             list_len = 5 if not hparams else hparams.get("data_list_len", 5)
             elems = map(np.array, itertools.permutations(list(range(list_len))))
             operands = torch.stack([torch.from_numpy(i) for i in elems])
-            st()
             if operator == "sort":
-                rhs = torch.sort(operands, dim=1)[0]
+                # sort each list
+                rhs = torch.sort(operands, dim=1).values
+
             elif operator == "reverse":
                 rhs = torch.flip(operands, dims=(1,))
             elif operator == "copy":
@@ -476,14 +482,14 @@ class ArithmeticDataset:
                 rp = torch.randperm(list_len, generator=generator)
                 mp = {}
                 for i, j in enumerate(rp):
-                    mp[i+1] = j # since we are using 1 based indexing for the list
+                    mp[i] = j # since we are using 1 based indexing for the list
                 print(f'Random mapping: {mp}'.center(100, '-') )
                 rhs = torch.tensor([[mp[i.item()] for i in row] for row in operands])
             elif operator == 'idx_add':
                 # add the index to each element
                 rhs = operands + torch.arange(list_len)
             else:
-                raise NotImplementedError, f"Operator {operator} not implemented"
+                raise NotImplementedError
             rhs_list = rhs.tolist()
         num_examples = operands.shape[0]
 
@@ -550,9 +556,7 @@ class ArithmeticDataset:
     def make_data(cls, operator, operands=None, shuffle=True, seed=0, hparams=None) -> List[str]:
         operator, noise_level = cls._get_operator_and_noise_level(operator)
         assert operator in VALID_OPERATORS
-
-        st()
-        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
+        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add"]:
             data = cls._make_binary_operation_data(operator, hparams)
         else:
             data = cls._make_unary_operation_data(operator, operands, hparams)
@@ -568,7 +572,7 @@ class ArithmeticDataset:
             for i in range(noise_level):
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
         # st()
-        if operator in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1"]:
+        if operator in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add"]:
             # unary, regression possible, eq[2] = forward target (int/float) and eq3[] = backward target (int/float)
             data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN, eq[2], eq[3]] for eq in data]
         else:
