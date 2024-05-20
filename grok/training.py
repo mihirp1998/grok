@@ -551,7 +551,6 @@ class TrainableTransformer(LightningModule):
         # if forward_accuracy
 
         if self.hparams.tta_train:
-            # st()
             batch_val = next(self.val_dataloader())
             
             if self.hparams.val_batchify:
@@ -564,7 +563,6 @@ class TrainableTransformer(LightningModule):
                 batch=batch_val, batch_idx=batch_idx, train=False
             )
             
-            # st()
 
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
             eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)            
@@ -592,6 +590,7 @@ class TrainableTransformer(LightningModule):
             )
             tta_loss = tta_loss * self.hparams.tta_coef
             losses.append(tta_loss)
+            # st()/
 
         # st()
         total_loss = torch.mean(torch.stack(losses))
@@ -600,7 +599,7 @@ class TrainableTransformer(LightningModule):
 
         lr = self.trainer.lr_scheduler_configs[0].scheduler.optimizer.param_groups[0]["lr"]
         
-        # st()
+        
         output = {
             "loss": total_loss,
             'forward_train_accuracy': coeff * forward_accuracy,
@@ -642,8 +641,15 @@ class TrainableTransformer(LightningModule):
                 forward_train_accuracy = torch.stack([x["forward_train_accuracy"] for x in outputs]).sum()
                 inverse_train_accuracy = torch.stack([x["inverse_train_accuracy"] for x in outputs]).sum()
                 
-                forward_train_accuracy_tta = torch.stack([x["forward_train_accuracy_tta"] for x in outputs]).sum()
-                inverse_train_accuracy_tta = torch.stack([x["inverse_train_accuracy_tta"] for x in outputs]).sum()
+                if self.hparams.val_batchify:
+                    forward_train_accuracy_tta = torch.stack([x["forward_train_accuracy_tta"] for x in outputs]).sum()
+                    inverse_train_accuracy_tta = torch.stack([x["inverse_train_accuracy_tta"] for x in outputs]).sum()
+                else:
+                    forward_train_accuracy_tta = torch.stack([x["forward_train_accuracy_tta"] for x in outputs]).mean()
+                    inverse_train_accuracy_tta = torch.stack([x["inverse_train_accuracy_tta"] for x in outputs]).mean()                    
+                    # if self.hparams.tta_train:
+                    #     st()                    
+
                 
                 forward_train_loss = torch.stack([x["forward_train_loss"] for x in outputs]).sum()
                 inverse_train_loss = torch.stack([x["inverse_train_loss"] for x in outputs]).sum()                
@@ -787,7 +793,7 @@ class TrainableTransformer(LightningModule):
                 logs["f_train_loss"] = tr_loss
                 logs["f_train_acc"] = tr_acc
 
-                if tr_acc == 100 and not self.hparams.tta_train:
+                if self.hparams.steps_to_tta > self.trainer.global_step  and tr_acc == 100 and not self.hparams.tta_train:
                     self.hparams.tta_train = True
                     self.hparams.inverse_train = False
                     self.hparams.forward_train = False
