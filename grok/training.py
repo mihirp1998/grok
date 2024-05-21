@@ -69,6 +69,21 @@ class TrainableTransformer(LightningModule):
 
         self.prepare_data()
 
+        ip_out_map = self.ip_out_map
+
+        # now print the degree of bijectivity by calculating how many inputs map to the each output
+        output_counts = {}
+        for k,v in ip_out_map.items():
+            output_counts[v] = output_counts.get(v, 0) + 1
+
+        # get mean of counts to get the degree of bijectivity
+        mean_count = np.mean(list(output_counts.values()))
+        print(f'Mean count for {self.hparams.math_operator} = {mean_count} out of {len(ip_out_map)}')
+        # degree_of_bijectivity = 1 - max_count/len(ip_out_map)
+        # print(f"Degree of bijectivity for {self.hparams.math_operator} = {degree_of_bijectivity}".center(80, '-'))
+        sys.exit(0)
+        st()
+
 
 
 
@@ -169,7 +184,7 @@ class TrainableTransformer(LightningModule):
         Loads training data to self.train_dataset
         Loads validation data to self.val_dataset
         """
-        (self.train_dataset, self.val_dataset,) = ArithmeticDataset.splits(
+        (self.train_dataset, self.val_dataset, self.ip_out_map) = ArithmeticDataset.splits(
             train_pct=self.hparams.train_data_pct,  # type: ignore
             operator=self.hparams.math_operator,  # type: ignore
             operand_length=self.hparams.operand_length,  # type: ignore
@@ -178,7 +193,7 @@ class TrainableTransformer(LightningModule):
             hparams=self.hparams,
         )
         if self.hparams.multi_task:
-            (self.train_dataset_2, self.val_dataset_2,) = ArithmeticDataset.splits(
+            (self.train_dataset_2, self.val_dataset_2, self.ip_out_map_2) = ArithmeticDataset.splits(
                 train_pct=self.hparams.train_data_pct,  # type: ignore
                 operator=self.hparams.math_operator_2,  # type: ignore
                 operand_length=self.hparams.operand_length,  # type: ignore

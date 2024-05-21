@@ -134,7 +134,7 @@ class ArithmeticTokenizerDigits:
                 ctr += 1
             output[ctr] = self.stoi[SPACE]
             ctr += 1
-        st()
+        # st()
         return LongTensor(output)
 
     def encode(self, obj: Union[str, List]) -> Tensor:
@@ -286,12 +286,13 @@ class ArithmeticDataset:
 
         assert (0 < train_pct) and (train_pct < 100)
         ds_name = cls.get_dsname(operator, operand_length)
-        eqs = cls.make_data(operator, operand_length, hparams=hparams)
+        eqs, ip_out_map = cls.make_data(operator, operand_length, hparams=hparams)
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
         train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator, max_context_len=max_context_len, hparams=hparams)
         val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator, max_context_len=max_context_len, hparams=hparams)
-        return train_ds, val_ds
+        return train_ds, val_ds, ip_out_map
+
 
 
     @classmethod
@@ -345,6 +346,7 @@ class ArithmeticDataset:
 
     @classmethod
     def _make_binary_operation_data(cls, operator: str, operands=None, hparams=None) -> List[str]:
+        ip_out_map = {}
         if operator == "s5":
             operands = operands or list(range(5))
             elems = map(np.array, itertools.permutations(operands))
@@ -365,7 +367,6 @@ class ArithmeticDataset:
         #     print("elems", list(elems))
         #     print("tuples", list(tuples))
         eqs = []
-        # st()
         for a, b in tuples:
             if operator == "/":
                 if b == 0:
@@ -399,11 +400,11 @@ class ArithmeticDataset:
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
             eqs.append([eq,invert_eq])
-
+            ip_out_map[(tuple(a.tolist()), tuple(b.tolist()))] = tuple(c)
 
         # if operator == "s5":
         #     print("eqs", eqs)
-        return eqs
+        return eqs, ip_out_map
 
     # @staticmethod
     # def _render_unop_example(operator, lhs, rhs):
@@ -417,7 +418,7 @@ class ArithmeticDataset:
         :returns: list of equations"""
         # operands = list(range(4))
         # st()
-
+        ip_out_map = {}
         if operator == "2x":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [[(i.item())*2] for i in operands]
@@ -521,6 +522,11 @@ class ArithmeticDataset:
             else:
                 raise NotImplementedError
             rhs_list = rhs.tolist()
+
+        # populate the ip_out_map using operands tensor (shape = (N,1)) and rhs_list (length = N)
+        for i in range(operands.shape[0]):
+            ip_out_map[tuple(operands[i].tolist())] = tuple(rhs_list[i])
+
         num_examples = operands.shape[0]
 
         def func(L, R):
@@ -540,7 +546,7 @@ class ArithmeticDataset:
         else:
             with ProcessPoolExecutor() as executor:
                 eqs = executor.map(func, tqdm(zip(operands, rhs), total=num_examples))
-        return eqs
+        return eqs, ip_out_map
 
     # @staticmethod
     # def _make_s5_data(abstract=False) -> List[str]:
@@ -588,10 +594,10 @@ class ArithmeticDataset:
 
 
         if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
-            data = cls._make_binary_operation_data(operator, hparams=hparams)
+            data, ip_out_map = cls._make_binary_operation_data(operator, hparams=hparams)
         else:
             # st()
-            data = cls._make_unary_operation_data(operator, operands, hparams=hparams)
+            data, ip_out_map = cls._make_unary_operation_data(operator, operands, hparams=hparams)
         # st()
         rng = np.random.RandomState(seed=seed)
         if shuffle:
@@ -607,7 +613,7 @@ class ArithmeticDataset:
         # st()
         data = [[EOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,EOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
         # st()
-        return data
+        return data, ip_out_map
 
     # @classmethod
     # def create_data_file(
