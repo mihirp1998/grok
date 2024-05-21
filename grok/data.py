@@ -51,7 +51,7 @@ VALID_OPERATORS = {
     'reverse_pool': 'reverse_pool',
     'k_shift': 'k_shift',
     'random_swaps': 'random_swaps',
-    'idx_add': 'idx_add'
+    'idx_add': 'idx_add',
     "caesarcipher": "caesarcipher",
     "permutev1": "permutev1",
     "permutev2": "permutev2",
