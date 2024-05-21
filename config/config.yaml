@@ -49,6 +49,8 @@ logdir: logs
 datadir: data
 d_key: -1
 checkpoint_path: None
+data_list_len: 7
+k: 3
 
 
 
