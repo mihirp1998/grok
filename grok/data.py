@@ -324,7 +324,6 @@ class ArithmeticDataset:
             self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
         self.train = train
-        # st()
         if isinstance(data, list):
             self.data = self.tokenizer.encode(data)
         else:

@@ -980,8 +980,18 @@ class TrainableTransformer(LightningModule):
                     logs["inv_full_train_acc"] = inv_tr_acc
 
             if self.hparams.plot_pca_last_layer:
-                def get_fig(layer):
+                if self.hparams.math_operator not in ['2x', '2x+1', 'x+11', 'x**3', 'pfactor']:
+                    START_IDX = 39 # of 0
+                    END_IDX =  136 # of 97
+                    NUM_COMPONENTS = 20
                     C=97
+                else:
+                    START_IDX = 46 # of 0
+                    END_IDX = 56 # of 10
+                    NUM_COMPONENTS = 10
+                    C=10
+
+                def get_circles(layer):
                     fig,ax=plt.subplots(1,4,figsize=(20/3*4,4/3*4))
                     aa=[0,1,2,3,4,5,6,7] # put the desired dimensions here
                     for uu in range(0,8,2):
@@ -989,7 +999,7 @@ class TrainableTransformer(LightningModule):
                         we=layer #
                         # now use scikit PCA to reduce the dimensionality of the embedding
                         from sklearn.decomposition import PCA
-                        pca = PCA(n_components=20)
+                        pca = PCA(n_components=NUM_COMPONENTS)
                         we2=pca.fit_transform(we.detach().cpu().numpy())
                         X=aa[uu]
                         Y=aa[uu+1]
@@ -1004,13 +1014,56 @@ class TrainableTransformer(LightningModule):
                             ax[uu//2].annotate(str(i), (we2[i,X],we2[i,Y]))
                     return fig
 
-                last_layer_viz = get_fig(self.transformer.linear.weight[39:136, :])
-                embed_viz = get_fig(self.transformer.embedding.weight[39:136, :])
+                def get_2d_pca(layer):
+                    fig,ax=plt.subplots(12,12,figsize=(40,15))
+                    # model.load_state_dict(torch.load(model_file,map_location=DEVICE))
+                    # we=model.embed.W_E.T
+                    we = layer
+                    # now use scikit PCA to reduce the dimensionality of the embedding
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=NUM_COMPONENTS)
+                    we2=pca.fit_transform(we.detach().cpu().numpy())
+                    for i in range(NUM_COMPONENTS):
+                        for j in range(NUM_COMPONENTS):
+                            ax[i,j].scatter(we2[:,i],we2[:,j],s=5)
+                    return fig
 
-                captions = ['PCA of Last Layer Weights', 'PCA of Embedding Weights']
+                def get_feature_viz(layer):
+                    we=layer
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=NUM_COMPONENTS)
+                    we2=pca.fit_transform(we.detach().cpu().numpy())
+                    # make a line plot of each 97 components with each PCA having its own subplot
+
+                    # subplot
+                    fig, axs = plt.subplots(3, 4, figsize=(24, 12))
+
+                    # plt.figure(figsize=(30,6))
+                    for ix in range(NUM_COMPONENTS):
+                        #  visualize the PCA components with shape[0] on the x-axis
+                        vs=we2[:,ix] # shape (97, 1)
+                        # make a line plot of each 97 components
+
+                        # plot in the subplot
+                        axs[ix//4, ix%4].plot(vs)
+                        axs[ix//4, ix%4].set_title(f"PCA {ix+1}")
+
+                    return fig
+
+                embed_viz = get_circles(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                last_layer_viz = get_circles(self.transformer.linear.weight[START_IDX:END_IDX, :])
+
+                embed_2d_viz = get_2d_pca(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                last_layer_2d_viz = get_2d_pca(self.transformer.linear.weight[START_IDX:END_IDX, :])
+
+                embed_feature_viz = get_feature_viz(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                last_layer_feature_viz = get_feature_viz(self.transformer.linear.weight[START_IDX:END_IDX, :])
+
+
+                captions = ['PCA of Embedding Weights', 'PCA of Last Layer Weights', '2D PCA of Embedding Weights', '2D PCA of Last Layer Weights', 'Feature Viz of Embedding Weights', 'Feature Viz of Last Layer Weights']
 
                 # log figure to wandb
-                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz], step=self.trainer.global_step, caption=captions)
+                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz, embed_2d_viz, last_layer_2d_viz, embed_feature_viz, last_layer_feature_viz], step=self.trainer.global_step, caption=captions)
 
             for k, v in logs.items():
                 # self.log(k, v)
