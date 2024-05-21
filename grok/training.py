@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import argparse
 import copy
 import wandb
@@ -1015,7 +1013,7 @@ class TrainableTransformer(LightningModule):
                     return fig
 
                 def get_2d_pca(layer):
-                    fig,ax=plt.subplots(12,12,figsize=(40,15))
+                    fig,ax=plt.subplots(NUM_COMPONENTS,NUM_COMPONENTS,figsize=(40,15))
                     # model.load_state_dict(torch.load(model_file,map_location=DEVICE))
                     # we=model.embed.W_E.T
                     we = layer
@@ -1039,7 +1037,7 @@ class TrainableTransformer(LightningModule):
                     fig, axs = plt.subplots(3, 4, figsize=(24, 12))
 
                     # plt.figure(figsize=(30,6))
-                    for ix in range(NUM_COMPONENTS):
+                    for ix in range(min(NUM_COMPONENTS, 12)): # dont ask
                         #  visualize the PCA components with shape[0] on the x-axis
                         vs=we2[:,ix] # shape (97, 1)
                         # make a line plot of each 97 components
