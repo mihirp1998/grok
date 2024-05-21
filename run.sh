@@ -102,3 +102,5 @@ python main.py  +hydra/launcher=grogu  math_operator=+,/,**3+,+-,**2+,- train_da
 python main.py  +hydra/launcher=matrix  math_operator=+,/,**3+,+-,**2+,- train_data_pct=10,20,30,40,50,60,70,80,90 exp=f  weight_decay=1.0 group=m15 -m 
 
 python main.py math_operator=+ train_data_pct=10 exp=ff do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m15 -m 
+
+python main.py  +hydra/launcher=matrix  math_operator=**3+,**2+ train_data_pct=10,20,30,40,50,60,70,80,90 exp=f  weight_decay=1.0 group=m16 -m 
