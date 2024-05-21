@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 import hydra
 from omegaconf import DictConfig
@@ -17,9 +18,8 @@ import os
 @hydra.main(config_path="config", config_name="config")
 def main(args: DictConfig):
     # st(
-    wandb.login(key='899662853ead8246d39f962194401e222ad8517a', relogin=False)
+    wandb.login(key='899662853ead8246d39f962194401e222ad8517a', relogin=True)
     print(args)
-    # st()
     args.logdir = os.path.abspath(args.logdir)
     args.datadir = os.path.abspath(args.datadir)
     grok.training.train(args)

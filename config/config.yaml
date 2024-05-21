@@ -3,11 +3,12 @@ defaults:
   - exp: ff
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
+
 debug: False
 random_seed: 42
 embed_style: same
 gpu: 0
-max_steps: 100000 # 000
+max_steps: 25000 # 000
 project_name: grok_m
 batchsize: 0
 n_layers: 2
@@ -49,13 +50,16 @@ logdir: logs
 datadir: data
 d_key: -1
 checkpoint_path: None
+data_list_len: 7
+k: 3
+plot_pca_last_layer: False
 
 
 
 hydra:
-  output_subdir: /home/mprabhud/phd_projects/grok/exps
+  output_subdir: ./exps/
   run:
-    dir: /home/mprabhud/phd_projects/grok/exps
+    dir: ./exps/
   sweep:
-    dir: /home/mprabhud/phd_projects/grok/exps
-    subdir: /home/mprabhud/phd_projects/grok/exps
+    dir: ./exps/
+    subdir: ./exps/

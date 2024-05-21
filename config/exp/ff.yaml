@@ -1,3 +1,7 @@
 # @package _global_
 forward_forward_mode: True
 mode: ff
+do_tta: True 
+tta_coef: 0.03 
+inv_coef: 0.1 
+weight_decay: 1.0

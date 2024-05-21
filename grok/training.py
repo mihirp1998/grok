@@ -3,7 +3,9 @@
 import argparse
 import copy
 import wandb
+import matplotlib.pyplot as plt
 # import data
+import time
 import json
 import pandas as pd
 import logging
@@ -64,14 +66,30 @@ class TrainableTransformer(LightningModule):
             self.hparams[key]=hparams_dict[key]
 
         # st()
-        
+
         self.validation_step_outputs = []
         self.training_step_outputs = []
 
         self.prepare_data()
 
+        # ip_out_map = self.ip_out_map
 
-            
+        # now print the degree of bijectivity by calculating how many inputs map to the each output
+        # output_counts = {}
+        # when uncommenting, uncomment one line in data.py as well (line 403)
+        # for k,v in ip_out_map.items():
+            # output_counts[v] = output_counts.get(v, 0) + 1
+
+        # get mean of counts to get the degree of bijectivity
+        # mean_count = np.mean(list(output_counts.values()))
+        # print(f'Mean count for {self.hparams.math_operator} = {mean_count} out of {len(ip_out_map)}')
+        # degree_of_bijectivity = 1 - max_count/len(ip_out_map)
+        # print(f"Degree of bijectivity for {self.hparams.math_operator} = {degree_of_bijectivity}".center(80, '-'))
+        # time.sleep(15)
+        # sys.exit(0)
+        # st()
+
+
 
         self.transformer = Transformer(
             hparams.n_layers,
@@ -170,20 +188,24 @@ class TrainableTransformer(LightningModule):
         Loads training data to self.train_dataset
         Loads validation data to self.val_dataset
         """
-        (self.train_dataset, self.val_dataset,) = ArithmeticDataset.splits(
+        (self.train_dataset, self.val_dataset, self.ip_out_map) = ArithmeticDataset.splits(
             train_pct=self.hparams.train_data_pct,  # type: ignore
             operator=self.hparams.math_operator,  # type: ignore
             operand_length=self.hparams.operand_length,  # type: ignore
             data_dir=self.hparams.datadir,  # type: ignore
+            max_context_len=self.hparams.max_context_len,
+            hparams=self.hparams,
         )
         if self.hparams.multi_task:
-            (self.train_dataset_2, self.val_dataset_2,) = ArithmeticDataset.splits(
+            (self.train_dataset_2, self.val_dataset_2, self.ip_out_map_2) = ArithmeticDataset.splits(
                 train_pct=self.hparams.train_data_pct,  # type: ignore
                 operator=self.hparams.math_operator_2,  # type: ignore
                 operand_length=self.hparams.operand_length,  # type: ignore
                 data_dir=self.hparams.datadir,  # type: ignore
-            )            
-            
+                max_context_len=self.hparams.max_context_len,
+                hparams=self.hparams,
+            )
+
 
     def train_dataloader(self) -> ArithmeticIterator:  # type: ignore
         """
@@ -375,7 +397,7 @@ class TrainableTransformer(LightningModule):
         # st()
         if cc:
             x = batch["text"]  # shape = batchsize * context_len
-            y = batch["target"]  # shape = batchsize * context_len            
+            y = batch["target"]  # shape = batchsize * context_len
             # y_hat_cc = batch["y_hat_rhs"]
             # st()
         else:
@@ -388,14 +410,13 @@ class TrainableTransformer(LightningModule):
                 x = batch["text"][:,0]  # shape = batchsize * context_len
                 y = batch["target"][:,0]  # shape = batchsize * context_len
             cc_dict = None
-        
         if reverse_mode:
             y_hat, attentions, values = self.transformer.reverse(x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping)
         else:
             y_hat, attentions, values = self(
                 x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping, cc=cc, cc_dict=cc_dict  # type: ignore
             )  # shape = batchsize * context_len * vocab_size
-        
+
         y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
         # Note: each sample must have exactly one '=' and all of them must
         # have it in the same position.
@@ -550,7 +571,7 @@ class TrainableTransformer(LightningModule):
         start = time.time()
         losses = []
         forward_loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
-            batch=batch, batch_idx=batch_idx, train=True, 
+            batch=batch, batch_idx=batch_idx, train=True,
         )
         forward_loss = forward_loss * self.hparams.f_coef
         losses.append(forward_loss)
@@ -559,19 +580,19 @@ class TrainableTransformer(LightningModule):
         # data
         if self.hparams.cyclic_consistency:
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
-            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)            
+            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
             batch_cc = copy.deepcopy(batch)
             cc_dict = {}
             y_hat_rhs_pred = y_hat_rhs.argmax(1)
-            
-            data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)        
-            assert (batch['text'][0][1] == data_tmp[:,:-1][0]).all()
-            
-            data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)        
+
+            data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
+            # assert (batch['text'][0][1] == data_tmp[:,:-1][0]).all()
+
+            data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
 
             batch_cc['text']  = data[:,:-1]
             batch_cc['target']  = data[:,1:]
-            
+
             cc_dict['y_hat_rhs'] = y_hat_rhs
             cc_dict['eos_token'] = eos_token
             cc_dict['y_rhs'] = y_rhs[:,:-1]
@@ -579,19 +600,19 @@ class TrainableTransformer(LightningModule):
             cc_dict['x_lhs'] = x_lhs[:,1:]
             # x_lhs
             # st()
-            
-            
+
+
             inv_loss_cc, inv_accuracy_cc, inv_coeff_cc, inv_x_lhs_cc, inv_y_hat_rhs_cc, inv_y_rhs_cc, inv_attentions_cc, inv_values_cc = self._step(
                 batch=batch_cc, batch_idx=batch_idx, train=True, inverse_mapping=True, cc=True, cc_dict= cc_dict
             )
-            
+
             inv_loss_cc = inv_loss_cc * self.hparams.cc_coef
             # st()
             losses.append(inv_loss_cc)
             # st()
         else:
             pass
-        
+
         if self.hparams['do_tta']:
             batch_val = next(self.val_dataloader())
             # st()
@@ -600,24 +621,24 @@ class TrainableTransformer(LightningModule):
                 batch_val['text'] = batch_val['text'][index_rand]
                 batch_val['target'] = batch_val['target'][index_rand]
                 # st()
-                 
+
             #     batch_val = next(self.val_train_dataloader())
             #     st()
             # else:
             #     batch_val = next(self.val_dataloader())
             # st()
-            
+
             loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
                 batch=batch_val, batch_idx=batch_idx, train=False
             )
 
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
-            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)            
+            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|endoftext|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
             batch_val_cc = copy.deepcopy(batch_val)
             cc_dict = {}
             # y_hat_rhs_pred = y_hat_rhs.argmax(1)
-            
-            data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)        
+
+            data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
             # st()
             assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
             
@@ -625,21 +646,21 @@ class TrainableTransformer(LightningModule):
             # st()
             batch_val_cc['text']  = data[:,:-1]
             batch_val_cc['target']  = data[:,1:]
-            
+
             cc_dict['y_hat_rhs'] = y_hat_rhs
             cc_dict['eos_token'] = eos_token
             cc_dict['y_rhs'] = y_rhs[:,:-1]
             cc_dict['eq_token_index'] = eq_token_index
             cc_dict['x_lhs'] = x_lhs[:,1:]
-            
+
             inv_loss_cc_tta, inv_accuracy_cc_tta, inv_coeff_cc_tta, inv_x_lhs_cc_tta, inv_y_hat_rhs_cc_tta, inv_y_rhs_cc_tta, inv_attentions_cc_tta, inv_values_cc_tta = self._step(
                 batch=batch_val_cc, batch_idx=batch_idx, train=False, inverse_mapping=True, cc=True, cc_dict= cc_dict
             )
             # st()
             inv_loss_cc_tta = inv_loss_cc_tta * self.hparams.tta_coef
             losses.append(inv_loss_cc_tta)
-            # st()        
-        
+            # st()
+
         if self.hparams.multi_task:
             # st()
             batch_2 = next(self.train_iterator_2)
@@ -667,12 +688,12 @@ class TrainableTransformer(LightningModule):
         total_loss = torch.mean(torch.stack(losses))
 
         self.fwd_time_in_epoch += time.time() - start
-        
+
         # schedulers = self.trainer.lr_schedulers[0]
         # if self.current_epoch != self.next_train_epoch_to_log:
         #     return {"loss": loss}
         lr = self.trainer.lr_scheduler_configs[0].scheduler.optimizer.param_groups[0]["lr"]
-        
+
         output = {
             "loss": total_loss,
             'forward_loss': forward_loss,
@@ -683,15 +704,15 @@ class TrainableTransformer(LightningModule):
             "partial_attentions": attentions,
             "partial_values": values,
         }
-        
+
         if self.hparams.cyclic_consistency:
             output["inv_cc_loss"] = inv_loss_cc
             output["inv_cc_accuracy"] = inv_accuracy_cc
-        
+
         if self.hparams['do_tta']:
             output["inv_loss_cc_tta"] = inv_loss_cc_tta
             output["inv_accuracy_cc_tta"] = inv_accuracy_cc_tta
-        
+
         if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
             # outputs['inv_loss'] = inv_loss
             output['inv_partial_train_loss'] = inv_loss
@@ -701,7 +722,12 @@ class TrainableTransformer(LightningModule):
             output["x_lhs"] = x_lhs
         # st()
         self.training_step_outputs.append(output)
-
+        print("global step",self.trainer.global_step)
+        # if self.trainer.global_step % 1000 == 0 and self.trainer.save_checkpoints:
+        #     pth = '/home/mprabhud/sp/grok/model.pth'
+        #     torch.save(self.transformer.state_dict(), pth)
+        #     print(f'Saved model at {pth} at global step {self.trainer.global_step}')
+        
         return output
 
     def on_train_epoch_end(self):
@@ -738,29 +764,29 @@ class TrainableTransformer(LightningModule):
                 accuracy = torch.stack(
                     [x["partial_train_accuracy"] for x in outputs]
                 ).sum()
-                
+
                 forward_loss = torch.stack([x["forward_loss"] for x in outputs]).mean()
-                
+
                 if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
                     inv_loss = torch.stack([x["inv_partial_train_loss"] for x in outputs]).mean()
                     inv_perplexity = torch.exp(inv_loss)
                     inv_accuracy = torch.stack(
                         [x["inv_partial_train_accuracy"] for x in outputs]
                     ).mean()
-                    
+
                 if self.hparams.do_tta:
                     inv_loss_cc_tta = torch.stack([x["inv_loss_cc_tta"] for x in outputs]).mean()
                     inv_accuracy_cc_tta = torch.stack(
                         [x["inv_accuracy_cc_tta"] for x in outputs]
                     ).mean()
-                    
+
                 if self.hparams.cyclic_consistency:
                     inv_loss_cc = torch.stack([x["inv_cc_loss"] for x in outputs]).mean()
                     inv_accuracy_cc = torch.stack(
                         [x["inv_cc_accuracy"] for x in outputs]
                     ).mean()
-                                        
-                    
+
+
             # avg_lr = torch.stack([x["learning_rate"] for x in outputs]).mean()
             # max_lr = torch.stack([x["learning_rate"] for x in outputs]).max()
             # last_lr = outputs[-1]["learning_rate"]
@@ -792,19 +818,22 @@ class TrainableTransformer(LightningModule):
                 # pass
                 logs['inv_accuracy'] = inv_accuracy
                 # st()
-            
+
             if self.hparams.do_tta:
                 logs['inv_loss_cc_tta'] = inv_loss_cc_tta
                 logs['inv_accuracy_cc_tta'] = inv_accuracy_cc_tta
-                
-            
+
+
             if self.hparams.cyclic_consistency:
                 logs['inv_loss_cc'] = inv_loss_cc
                 logs['inv_accuracy_cc'] = inv_accuracy_cc
 
             # st()
-            for k, v in logs.items():
-                self.log(k, v)
+            wandb.log(logs, step=self.trainer.global_step)
+            # for k, v in logs.items():
+            #     # self.log(k, v)
+            #     self.logger.log_metrics({k: v}, step=self.trainer.global_step)
+
             self.training_step_outputs.clear()
 
     def validation_step(self, batch, batch_idx):
@@ -822,7 +851,7 @@ class TrainableTransformer(LightningModule):
             self.next_epoch_to_eval = self.current_epoch
         if self.current_epoch != self.next_epoch_to_eval:
             return {}
-        
+
 
         with torch.no_grad():
             # st()
@@ -883,7 +912,7 @@ class TrainableTransformer(LightningModule):
             self.next_epoch_to_eval = max(
                 int(1.02 * self.next_epoch_to_eval), self.next_epoch_to_eval + 1
             )
-            
+
             # st()
             assert len(outputs) ==1
 
@@ -892,7 +921,7 @@ class TrainableTransformer(LightningModule):
             accuracy = torch.stack([x["partial_val_accuracy"] for x in outputs]).mean()
             # st()
             max_val_accuracy = max(self.val_accuracy)
-            
+
             if self.hparams.save_activations or self.hparams.save_outputs:
                 if self.current_epoch == 0:
                     self._save_inputs(outputs, ds="val")
@@ -950,14 +979,63 @@ class TrainableTransformer(LightningModule):
                     logs["inv_full_train_loss"] = inv_tr_loss
                     logs["inv_full_train_acc"] = inv_tr_acc
 
+            if self.hparams.plot_pca_last_layer:
+                def get_fig(layer):
+                    C=97
+                    fig,ax=plt.subplots(1,4,figsize=(20/3*4,4/3*4))
+                    aa=[0,1,2,3,4,5,6,7] # put the desired dimensions here
+                    for uu in range(0,8,2):
+                        # ok, now let's manipulate the embedding weights
+                        we=layer #
+                        # now use scikit PCA to reduce the dimensionality of the embedding
+                        from sklearn.decomposition import PCA
+                        pca = PCA(n_components=20)
+                        we2=pca.fit_transform(we.detach().cpu().numpy())
+                        X=aa[uu]
+                        Y=aa[uu+1]
+                        ax1=ax[uu//2]
+                        box = ax1.get_position()
+                        box.y0-=0.09
+                        box.y1-=0.09
+                        ax1.set_position(box)
+                        ax[uu//2].set_title(f'Circle from Principal Component {X+1}, {Y+1}',fontsize=14,y=1.03)
+                        ax[uu//2].scatter(we2[:C,X],we2[:C,Y],c='r',s=20)
+                        for i in range(C):
+                            ax[uu//2].annotate(str(i), (we2[i,X],we2[i,Y]))
+                    return fig
+                # st()
+                # print(self.current_epoch)
+                # if self.current_epoch % 500 == 0:
+                #     st()
+                    
+                last_layer_viz = get_fig(self.transformer.linear.weight[39:136, :])
+                embed_viz = get_fig(self.transformer.embedding.weight[39:136, :])
 
-            for k, v in logs.items():
-                self.log(k, v)
+                captions = ['PCA of Last Layer Weights', 'PCA of Embedding Weights']
+
+                # log figure to wandb
+                # self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz], step=self.trainer.global_step, caption=captions)
+                # st()
+                logs.update({'PCA of Last Layer Weights':wandb.Image(last_layer_viz)})
+                logs.update({'PCA of Embedding Weights':wandb.Image(embed_viz)})
+                # wandb.log({}, step=self.trainer.global_step)
+                # st()
+                # logs.update({'PCA of Last Layer Weights':wandb.Image(embed_viz)})
+            # st()
+            wandb.log(logs, step=self.trainer.global_step)
+            # for k, v in logs.items():
+            #     # self.log(k, v)
+            #     self.logger.log_metrics({k: v}, step=self.trainer.global_step)
+            # st()
+
+
+
 
             # if max_val_accuracy > 99.5:
             #     # st()
             #     exit()
-        
+        # save when self.trainer.global_step is a multiple of 1000
+
         self.validation_step_outputs.clear()
         # st()
         # save a checkpoint if the epoch is a power of 2
@@ -1081,16 +1159,20 @@ def train(hparams: Namespace) -> None:
         group_name = None
 
     # st()
+    
+    
     if hparams_dict['debug']:
-        logger = WandbLogger(project=hparams['project_name'],  config=hparams_dict, mode='disabled')
+        wandb.init(project=hparams['project_name'], group=group_name, config=hparams_dict, mode='disabled')
     else:
-        logger = WandbLogger(project=hparams['project_name'], group=group_name, config=hparams_dict)
+        wandb.init(project=hparams['project_name'], group=group_name, config=hparams_dict)
+    #     logger = WandbLogger(project=hparams['project_name'],  config=hparams_dict, mode='disabled')
+    # else:
+    #     logger = WandbLogger(project=hparams['project_name'], group=group_name, config=hparams_dict)
     # st()
     # st()
     checkpoint_path = hparams.logdir + "/checkpoints"
     os.makedirs(checkpoint_path, exist_ok=True)
     hparams.checkpoint_path = checkpoint_path
-
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
     #     monitor="save_ckpt",
@@ -1106,7 +1188,7 @@ def train(hparams: Namespace) -> None:
         "val_check_interval": 1,
         "profiler": False,
         # "checkpoint_callback": checkpointer,
-        "logger": logger,
+        # "logger": logger,
         "log_every_n_steps": 1,
         # "flush_logs_every_n_steps": 1000,
     }
