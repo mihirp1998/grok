@@ -1,0 +1,104 @@
+python main.py +hydra/launcher=grogu math_operator=+,s5  +exp=ff,f train_data_pct=20,40,60,80 -m 
+
+1-12 - matrix not working
+
+python main.py +hydra/launcher=matrix math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+-  +exp=ff,f train_data_pct=50 -m 
+
+
+python main.py +hydra/launcher=grogu math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+-,reverse  exp=ff,f train_data_pct=50,40 weight_decay=1.0 group=m10 -m
+python main.py +hydra/launcher=grogu math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+-,reverse  exp=ff train_data_pct=50  group=m7 weight_decay=1.0 d_model=256 n_layers=4 -m
+
+python main.py +hydra/launcher=grogu math_operator=+
+
+
+python main.py math_operator=+   do_tta=True  cc_coef=0.0 tta_coef=0.0 inv_coef=0.0 +hydra/launcher=matrix -m
+
+
+
+
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff inv_coef=0.1,0.5,1.0 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff do_tta=True tta_coef=0.1,0.5,1.0 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff cyclic_consistency=True cc_coef=0.1,0.5,1.0 -m
+
+
+
+
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff do_tta=True tta_coef=0.1 inv_coef=0.1 group=m11 weight_decay=1.0 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff cyclic_consistency=True cc_coef=0.1 inv_coef=0.1 group=m11 weight_decay=1.0 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=f weight_decay=1.0 group=m11 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff inv_coef=0.1 weight_decay=1.0 group=m11 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff cyclic_consistency=True cc_coef=0.1 inv_coef=0.1 group=m11 -m
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff do_tta=True tta_coef=0.05 inv_coef=0.1 group=m11 -m
+
+
+python main.py +hydra/launcher=grogu math_operator=-,s5,+,**3+,* train_data_pct=60 exp=ff do_tta=True tta_coef=0.1 inv_coef=0.0 group=m12 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+-,reverse train_data_pct=30,40,50 exp=ff do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m12 -m
+
+
+
+python main.py +hydra/launcher=grogu math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+-,reverse train_data_pct=30,40,50 exp=ff do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m12 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+-,reverse train_data_pct=30,40,50 exp=f weight_decay=1.0 group=m12 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,-,reverse train_data_pct=30,40,50 exp=f weight_decay=1.0 group=m12 -m
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,- train_data_pct=30 exp=f weight_decay=1.5,2.0,2.5 group=m12 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=- train_data_pct=30 exp=f  group=tmp -m
+
++,-,**2+,+-,**3+,/
+
+
+python main.py +hydra/launcher=matrix math_operator=s5,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+* train_data_pct=30 exp=f weight_decay=1.0 group=m12 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,- train_data_pct=20 exp=ff do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m12 -m 
+
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,- exp=ff train_data_pct=30 do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m13 -m 
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,- exp=f train_data_pct=30 exp=f weight_decay=2.0 group=m13 -m 
+
+
+
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,- train_data_pct=20 exp=f weight_decay=2.0  group=m12 d_model=384 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,-  inverse_train=True forward_train=True  val_batchify=False train_data_pct=40 steps_to_tta=2000,5000,1000 -m
+
+
+python main.py  +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+ train_data_pct=30 exp=f  weight_decay=1.0 multi_task=True multi_coef=1.0,0.1 group=m13 -m
+
+python main.py  +hydra/launcher=grogu math_operator=+,/,**3+,+-,**2+ train_data_pct=30 exp=f  weight_decay=1.0 multi_task=True multi_coef=2.0 group=m13 -m
+
+python main.py  +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+ train_data_pct=30 exp=f  weight_decay=1.0 multi_task=True multi_coef=2.0 group=m13 -m
+
+
+python main.py  +hydra/launcher=matrix math_operator=- math_operator_2=+ train_data_pct=30 exp=f  weight_decay=1.0 multi_task=True multi_coef=0.03,0.3 group=m13 -m
+
+
+python main.py  +hydra/launcher=grogu math_operator=- math_operator_2=+ train_data_pct=30 exp=f  weight_decay=1.0 multi_task=True  multi_coef=1.0,0.1 group=m13 -m
+
+
++,/,**3+,+-,**2+
+
+
+python main.py  +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+ train_data_pct=30 exp=f  weight_decay=1.0 multi_task=True  group=m13 -m
+
+
+python main.py +hydra/launcher=matrix math_operator=+,/,**3+,+-,**2+,- exp=ff train_data_pct=30 do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 max_steps=1000 group=m14 -m 
+
+
+
+python main.py  +hydra/launcher=grogu  math_operator=+,/,**3+,+-,**2+,- train_data_pct=10,20,30,40,50,60,70,80,90 exp=ff do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m15 -m 
+
+
+python main.py  +hydra/launcher=matrix  math_operator=+,/,**3+,+-,**2+,- train_data_pct=10,20,30,40,50,60,70,80,90 exp=f  weight_decay=1.0 group=m15 -m 
+
+python main.py math_operator=+ train_data_pct=10 exp=ff do_tta=True tta_coef=0.03 inv_coef=0.1 weight_decay=1.0 group=m15 -m 
