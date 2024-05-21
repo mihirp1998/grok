@@ -15,6 +15,7 @@ def main(args: DictConfig):
     grok.training.train(args)
 
 def run_experiment(val):
+
     # Override the learning rate in the config
     with hydra.initialize(config_path="config"):
         cfg = hydra.compose(config_name="config")

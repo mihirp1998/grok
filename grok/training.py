@@ -2,6 +2,8 @@
 
 import argparse
 import copy
+import wandb
+import matplotlib.pyplot as plt
 # import data
 import time
 import json
@@ -86,7 +88,6 @@ class TrainableTransformer(LightningModule):
         # time.sleep(15)
         # sys.exit(0)
         # st()
-
 
 
 
@@ -409,7 +410,6 @@ class TrainableTransformer(LightningModule):
                 x = batch["text"][:,0]  # shape = batchsize * context_len
                 y = batch["target"][:,0]  # shape = batchsize * context_len
             cc_dict = None
-
         if reverse_mode:
             y_hat, attentions, values = self.transformer.reverse(x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping)
         else:
@@ -723,6 +723,11 @@ class TrainableTransformer(LightningModule):
         # st()
         self.training_step_outputs.append(output)
 
+        if self.trainer.global_step % 1000 == 0:
+            pth = '/home/mprabhud/sp/grok/model.pth'
+            torch.save(self.transformer.state_dict(), pth)
+            print(f'Saved model at {pth} at global step {self.trainer.global_step}')
+
         return output
 
     def on_train_epoch_end(self):
@@ -825,7 +830,9 @@ class TrainableTransformer(LightningModule):
 
             # st()
             for k, v in logs.items():
-                self.log(k, v)
+                # self.log(k, v)
+                self.logger.log_metrics({k: v}, step=self.trainer.global_step)
+
             self.training_step_outputs.clear()
 
     def validation_step(self, batch, batch_idx):
@@ -972,14 +979,51 @@ class TrainableTransformer(LightningModule):
                     logs["inv_full_train_loss"] = inv_tr_loss
                     logs["inv_full_train_acc"] = inv_tr_acc
 
+            if self.hparams.plot_pca_last_layer:
+                def get_fig(layer):
+                    C=97
+                    fig,ax=plt.subplots(1,4,figsize=(20/3*4,4/3*4))
+                    aa=[0,1,2,3,4,5,6,7] # put the desired dimensions here
+                    for uu in range(0,8,2):
+                        # ok, now let's manipulate the embedding weights
+                        we=layer #
+                        # now use scikit PCA to reduce the dimensionality of the embedding
+                        from sklearn.decomposition import PCA
+                        pca = PCA(n_components=20)
+                        we2=pca.fit_transform(we.detach().cpu().numpy())
+                        X=aa[uu]
+                        Y=aa[uu+1]
+                        ax1=ax[uu//2]
+                        box = ax1.get_position()
+                        box.y0-=0.09
+                        box.y1-=0.09
+                        ax1.set_position(box)
+                        ax[uu//2].set_title(f'Circle from Principal Component {X+1}, {Y+1}',fontsize=14,y=1.03)
+                        ax[uu//2].scatter(we2[:C,X],we2[:C,Y],c='r',s=20)
+                        for i in range(C):
+                            ax[uu//2].annotate(str(i), (we2[i,X],we2[i,Y]))
+                    return fig
 
+                last_layer_viz = get_fig(self.transformer.linear.weight[39:136, :])
+                embed_viz = get_fig(self.transformer.embedding.weight[39:136, :])
+
+                captions = ['PCA of Last Layer Weights', 'PCA of Embedding Weights']
+
+                # log figure to wandb
+                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz], step=self.trainer.global_step, caption=captions)
 
             for k, v in logs.items():
-                self.log(k, v)
+                # self.log(k, v)
+                self.logger.log_metrics({k: v}, step=self.trainer.global_step)
+
+
+
+
 
             # if max_val_accuracy > 99.5:
             #     # st()
             #     exit()
+        # save when self.trainer.global_step is a multiple of 1000
 
         self.validation_step_outputs.clear()
         # save a checkpoint if the epoch is a power of 2
