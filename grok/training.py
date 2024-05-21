@@ -69,6 +69,9 @@ class TrainableTransformer(LightningModule):
 
         self.prepare_data()
 
+
+            
+
         self.transformer = Transformer(
             hparams.n_layers,
             hparams.n_heads,
@@ -84,6 +87,10 @@ class TrainableTransformer(LightningModule):
         self.margin = torch.Tensor([0])
         self.next_epoch_to_eval = -1
         self.next_train_epoch_to_log = 0
+
+
+        if self.hparams.multi_task:
+            self.train_iterator_2  = self.train_dataloader_2()
 
         self.trainer_step_val_dict = {}
 
@@ -168,6 +175,14 @@ class TrainableTransformer(LightningModule):
             operand_length=self.hparams.operand_length,  # type: ignore
             data_dir=self.hparams.datadir,  # type: ignore
         )
+        if self.hparams.multi_task:
+            (self.train_dataset_2, self.val_dataset_2,) = ArithmeticDataset.splits(
+                train_pct=self.hparams.train_data_pct,  # type: ignore
+                operator=self.hparams.math_operator_2,  # type: ignore
+                operand_length=self.hparams.operand_length,  # type: ignore
+                data_dir=self.hparams.datadir,  # type: ignore
+            )            
+            
 
     def train_dataloader(self) -> ArithmeticIterator:  # type: ignore
         """
@@ -178,6 +193,25 @@ class TrainableTransformer(LightningModule):
         device = self.transformer.embedding.weight.device
         iterator = ArithmeticIterator(
             self.train_dataset,
+            device,
+            batchsize_hint=self.hparams.batchsize,  # type: ignore
+        )
+        # st()
+        self.train_batchsize = iterator.batchsize
+        self.batches_per_epoch = len(iterator)
+
+        return iterator
+
+
+    def train_dataloader_2(self) -> ArithmeticIterator:  # type: ignore
+        """
+        Used by pytorch_lighting
+
+        :returns: an iterator for self.train_dataset
+        """
+        device = self.transformer.embedding.weight.device
+        iterator = ArithmeticIterator(
+            self.train_dataset_2,
             device,
             batchsize_hint=self.hparams.batchsize,  # type: ignore
         )
@@ -508,7 +542,6 @@ class TrainableTransformer(LightningModule):
         :returns: a dict with loss, accuracy, lr, probabilities of solutions,
                   attentions, and values
         """
-        # st()
         if batch_idx == 0:
             self.training_epoch_start_time = time.time()
             self.fwd_time_in_epoch = 0
@@ -518,19 +551,10 @@ class TrainableTransformer(LightningModule):
         forward_loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
             batch=batch, batch_idx=batch_idx, train=True, 
         )
-        # st()
         forward_loss = forward_loss * self.hparams.f_coef
-        
         losses.append(forward_loss)
-        
-        
-        
         # recreate batch
-        
-        
-
         # batch_copy = copy.deepcopy(batch)
-        # st()
         # data
         if self.hparams.cyclic_consistency:
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
@@ -597,7 +621,7 @@ class TrainableTransformer(LightningModule):
             assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
             
             data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)        
-
+            st()
             batch_val_cc['text']  = data[:,:-1]
             batch_val_cc['target']  = data[:,1:]
             
@@ -615,7 +639,16 @@ class TrainableTransformer(LightningModule):
             losses.append(inv_loss_cc_tta)
             # st()        
         
-        
+        if self.hparams.multi_task:
+            # st()
+            batch_2 = next(self.train_iterator_2)
+            batch_2['text'] = batch_2['text'].to(self.device)
+            batch_2['target'] = batch_2['target'].to(self.device)
+            loss_2, accuracy_2, coeff_2, x_lhs_2, y_hat_rhs_2, y_rhs_2, attentions_2, values_2 = self._step(
+                batch=batch_2, batch_idx=batch_idx, train=True
+            )
+            loss_2 = loss_2 * self.hparams.multi_coef
+            losses.append(loss_2)
         if self.hparams.forward_forward_mode:
             inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True
@@ -922,9 +955,9 @@ class TrainableTransformer(LightningModule):
             for k, v in logs.items():
                 self.log(k, v)
 
-            if max_val_accuracy > 99.5:
-                # st()
-                exit()
+            # if max_val_accuracy > 99.5:
+            #     # st()
+            #     exit()
         
         self.validation_step_outputs.clear()
         # save a checkpoint if the epoch is a power of 2
@@ -1102,7 +1135,7 @@ def train(hparams: Namespace) -> None:
     os.makedirs(csv_folder, exist_ok=True)
     csv_folder = os.path.join(csv_folder, f'op_{hparams.math_operator}')
     os.makedirs(csv_folder, exist_ok=True)
-    csv_path = os.path.join(csv_folder, f'val_{hparams.mode}.csv')
+    csv_path = os.path.join(csv_folder, f'val_{hparams.mode}_t{hparams.train_data_pct}.csv')
     val_df.to_csv(csv_path)
     return hparams.logdir
 
