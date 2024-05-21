@@ -3,6 +3,7 @@
 import argparse
 import copy
 # import data
+import time
 import json
 import pandas as pd
 import logging
@@ -69,20 +70,22 @@ class TrainableTransformer(LightningModule):
 
         self.prepare_data()
 
-        ip_out_map = self.ip_out_map
+        # ip_out_map = self.ip_out_map
 
         # now print the degree of bijectivity by calculating how many inputs map to the each output
-        output_counts = {}
-        for k,v in ip_out_map.items():
-            output_counts[v] = output_counts.get(v, 0) + 1
+        # output_counts = {}
+        # when uncommenting, uncomment one line in data.py as well (line 403)
+        # for k,v in ip_out_map.items():
+            # output_counts[v] = output_counts.get(v, 0) + 1
 
         # get mean of counts to get the degree of bijectivity
-        mean_count = np.mean(list(output_counts.values()))
-        print(f'Mean count for {self.hparams.math_operator} = {mean_count} out of {len(ip_out_map)}')
+        # mean_count = np.mean(list(output_counts.values()))
+        # print(f'Mean count for {self.hparams.math_operator} = {mean_count} out of {len(ip_out_map)}')
         # degree_of_bijectivity = 1 - max_count/len(ip_out_map)
         # print(f"Degree of bijectivity for {self.hparams.math_operator} = {degree_of_bijectivity}".center(80, '-'))
-        sys.exit(0)
-        st()
+        # time.sleep(15)
+        # sys.exit(0)
+        # st()
 
 
 

@@ -400,7 +400,7 @@ class ArithmeticDataset:
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
             eqs.append([eq,invert_eq])
-            ip_out_map[(tuple(a.tolist()), tuple(b.tolist()))] = tuple(c)
+            # ip_out_map[(tuple(a.tolist()), tuple(b.tolist()))] = tuple(c)
 
         # if operator == "s5":
         #     print("eqs", eqs)
