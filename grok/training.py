@@ -445,7 +445,6 @@ class TrainableTransformer(LightningModule):
                     else:
                         grad_vec = torch.cat((grad_vec, p.grad.data.view(-1)))
                 return loss, grad_vec
-            st()
             return loss, acc, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values
 
 

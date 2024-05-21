@@ -569,7 +569,6 @@ class ArithmeticDataset:
         else:
             with ProcessPoolExecutor() as executor:
                 eqs = executor.map(func, tqdm(zip(operands, rhs), total=num_examples))
-        st()
         return eqs
 
     # @staticmethod
@@ -616,9 +615,9 @@ class ArithmeticDataset:
         operator, noise_level = cls._get_operator_and_noise_level(operator)
         assert operator in VALID_OPERATORS
         if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
-            data = cls._make_binary_operation_data(operator, hparams)
+            data = cls._make_binary_operation_data(operator, hparams=hparams)
         else:
-            data = cls._make_unary_operation_data(operator, operands, hparams)
+            data = cls._make_unary_operation_data(operator, operands, hparams=hparams)
         rng = np.random.RandomState(seed=seed)
         if shuffle:
             rng.shuffle(data)
@@ -633,7 +632,8 @@ class ArithmeticDataset:
         # st()
         if operator in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add"]:
             # unary, regression possible, eq[2] = forward target (int/float) and eq3[] = backward target (int/float)
-            data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN, eq[2], eq[3]] for eq in data]
+            # data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN, eq[2], eq[3]] for eq in data]
+            data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
         else:
             data = [[SOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,SOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
         # st()

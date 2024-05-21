@@ -84,17 +84,13 @@ hydra:
     hydra:
     - hydra.mode=RUN
     task:
-    - math_operator=caesarcipher_permutev1
     - exp=ff
-    - train_data_pct=80
-    - group=c10
-    - weight_decay=1.0
   job:
     name: main
     chdir: null
-    override_dirname: exp=ff,group=c10,math_operator=caesarcipher_permutev1,train_data_pct=80,weight_decay=1.0
-    id: '1680988_47'
-    num: 47
+    override_dirname: exp=ff
+    id: ???
+    num: ???
     config_name: config
     env_set: {}
     env_copy: []
@@ -119,7 +115,7 @@ hydra:
       provider: schema
     output_dir: /home/mprabhud/sp/grok
     choices:
-      exp: f
+      exp: ff
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: disabled
