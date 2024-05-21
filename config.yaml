@@ -18,8 +18,8 @@ train_data_pct: 80
 warmup_steps: 10
 group: t11
 anneal_lr_steps: 100000
-forward_mode: true
-forward_forward_mode: false
+forward_mode: false
+forward_forward_mode: true
 reverse_mode: false
 anneal_lr: false
 max_lr: 0.001
@@ -32,4 +32,4 @@ logdir: tsne_checkpoints/0002
 datadir: data
 d_key: -1
 checkpoint_path: None
-mode: f
+mode: ff
