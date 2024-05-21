@@ -547,7 +547,6 @@ class TrainableTransformer(LightningModule):
 
         outputs = self.training_step_outputs
 
-        # st()
 
         if epoch_is_to_be_logged and len(outputs) > 0:
             self.next_train_epoch_to_log = max(
@@ -746,17 +745,19 @@ class TrainableTransformer(LightningModule):
         # st()
         self.validation_step_outputs.clear()
         # save a checkpoint if the epoch is a power of 2
-        # if (
-        #     self.current_epoch > 0
-        #     and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
-        #     == self.current_epoch
-        # ):
-        #     self.trainer.save_checkpoint(
-        #         os.path.join(
-        #             self.hparams.checkpoint_path,
-        #             "epoch_" + str(self.current_epoch) + ".ckpt",
-        #         )
-        #     )
+        if (
+            self.current_epoch % 100 == 0
+        ) or (
+            self.current_epoch > 0
+            and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
+            == self.current_epoch
+        ):
+            self.trainer.save_checkpoint(
+                os.path.join(
+                    self.hparams.checkpoint_path,
+                    "epoch_" + str(self.current_epoch) + ".ckpt",
+                )
+            )
 
         if validation_is_real:
             return logs

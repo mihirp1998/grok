@@ -1,8 +1,6 @@
-- math_operator=pfactor
-- exp=ff
-- train_data_pct=50
-- group=c4
-- max_context_len=100
-- weight_decay=1.0
-- d_model=256
-- n_layers=4
+- math_operator=+
+- exp=f
+- debug=False
+- group=t11
+- save_activations=True
+- logdir=tsne_checkpoints/0002

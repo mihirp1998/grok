@@ -25,7 +25,6 @@ GROK_DIR = os.path.expanduser("~/data/grok")
 IMAGE_DIR = f"{GROK_DIR}/images"
 DATA_DIR = f"{GROK_DIR}/data"
 
-
 DEFAULT_CMAP = "viridis"
 
 default_metric_limits = {
