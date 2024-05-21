@@ -28,7 +28,7 @@ multi_coef: 1.0
 tta_coef: 1.0
 inv_coef: 1.0
 cc_coef: 1.0
-
+save_checkpoints: False
 
 operand_length: 1
 train_data_pct: 80

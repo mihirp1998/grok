@@ -16,7 +16,7 @@ import os
 
 @hydra.main(config_path="config", config_name="config")
 def main(args: DictConfig):
-    # st()
+    # st(
     wandb.login(key='899662853ead8246d39f962194401e222ad8517a', relogin=False)
     print(args)
     # st()

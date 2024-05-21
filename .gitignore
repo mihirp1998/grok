@@ -6,6 +6,7 @@ logs/
 # C extensions
 *.so
 slurm_out/
+exps/
 # Distribution / packaging
 .Python
 build/

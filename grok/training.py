@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import wandb
 # import data
 import json
 import pandas as pd
@@ -621,7 +622,7 @@ class TrainableTransformer(LightningModule):
             assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
             
             data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)        
-            st()
+            # st()
             batch_val_cc['text']  = data[:,:-1]
             batch_val_cc['target']  = data[:,1:]
             
@@ -918,7 +919,6 @@ class TrainableTransformer(LightningModule):
                 logs['inv_val_loss'] = inv_loss
                 logs['inv_val_perplexity'] = inv_perplexity
                 logs['inv_val_accuracy'] = inv_accuracy
-
                 # st()
 
 
@@ -951,7 +951,6 @@ class TrainableTransformer(LightningModule):
                     logs["inv_full_train_acc"] = inv_tr_acc
 
 
-
             for k, v in logs.items():
                 self.log(k, v)
 
@@ -960,18 +959,24 @@ class TrainableTransformer(LightningModule):
             #     exit()
         
         self.validation_step_outputs.clear()
+        # st()
         # save a checkpoint if the epoch is a power of 2
-        # if (
-        #     self.current_epoch > 0
-        #     and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
-        #     == self.current_epoch
-        # ):
-        #     self.trainer.save_checkpoint(
-        #         os.path.join(
-        #             self.hparams.checkpoint_path,
-        #             "epoch_" + str(self.current_epoch) + ".ckpt",
-        #         )
-        #     )
+        if self.hparams.save_checkpoints:
+            if (
+                self.current_epoch > 0
+                and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
+                == self.current_epoch
+            ):  
+                checkpoint_path = self.hparams.logdir + f"/checkpoints/{wandb.run.name}"
+                # st()
+                os.makedirs(checkpoint_path, exist_ok=True)
+                self.trainer.save_checkpoint(
+                    os.path.join(
+                        checkpoint_path,
+                        "epoch_" + str(self.current_epoch) + ".ckpt",
+                    )
+                )
+            # st()
 
         if validation_is_real:
             return logs
@@ -1057,10 +1062,8 @@ def train(hparams: Namespace) -> None:
         torch.cuda.manual_seed(hparams.random_seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+    # st()
 
-    checkpoint_path = hparams.logdir + "/checkpoints"
-    os.makedirs(checkpoint_path, exist_ok=True)
-    hparams.checkpoint_path = checkpoint_path
     # st()
     # Create the model
     model = TrainableTransformer(hparams).float()
@@ -1083,6 +1086,10 @@ def train(hparams: Namespace) -> None:
     else:
         logger = WandbLogger(project=hparams['project_name'], group=group_name, config=hparams_dict)
     # st()
+    # st()
+    checkpoint_path = hparams.logdir + "/checkpoints"
+    os.makedirs(checkpoint_path, exist_ok=True)
+    hparams.checkpoint_path = checkpoint_path
 
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
@@ -1171,7 +1178,7 @@ def compute_sharpness(hparams: Namespace, ckpts) -> None:
 
     checkpoint_path = hparams.logdir + "/checkpoints"
     os.makedirs(checkpoint_path, exist_ok=True)
-    hparams.checkpoint_path = checkpoint_path
+    # hparams.checkpoint_path = checkpoint_path
 
     # Create the model
     model = TrainableTransformer(hparams).float()
