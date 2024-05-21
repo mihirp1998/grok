@@ -1,4 +1,5 @@
-- math_operator=reverse
-- data_list_len=10
-- debug=True
-- math_operator=sort
+- math_operator=caesarcipher_permutev1
+- exp=ff
+- train_data_pct=80
+- group=c10
+- weight_decay=1.0

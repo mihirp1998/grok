@@ -84,16 +84,17 @@ hydra:
     hydra:
     - hydra.mode=RUN
     task:
-    - math_operator=reverse
-    - data_list_len=10
-    - debug=True
-    - math_operator=sort
+    - math_operator=caesarcipher_permutev1
+    - exp=ff
+    - train_data_pct=80
+    - group=c10
+    - weight_decay=1.0
   job:
     name: main
     chdir: null
-    override_dirname: data_list_len=10,debug=True,math_operator=reverse,math_operator=sort
-    id: ???
-    num: ???
+    override_dirname: exp=ff,group=c10,math_operator=caesarcipher_permutev1,train_data_pct=80,weight_decay=1.0
+    id: '1680988_47'
+    num: 47
     config_name: config
     env_set: {}
     env_copy: []

@@ -43,6 +43,7 @@ VALID_OPERATORS = {
     "2x" : "2x",
     "x**3" : "x**3",
     "2x+1" : "2x+1",
+    "x+11" : "x+11",
     "sort": "sort",
     "reverse": "reverse",
     "copy": "copy",
@@ -51,6 +52,13 @@ VALID_OPERATORS = {
     'k_shift': 'k_shift',
     'random_swaps': 'random_swaps',
     'idx_add': 'idx_add'
+    "caesarcipher": "caesarcipher",
+    "permutev1": "permutev1",
+    "permutev2": "permutev2",
+    "permutev3": "permutev3",
+    "strdeletev1": "strdeletev1",
+    "strdeletev2": "strdeletev2",
+    "caesarcipher_permutev1": "caesarcipher_permutev1"
 }
 EOS_TOKEN = "<|endoftext|>" # in line with gpt2
 SOS_TOKEN = "<|startoftext|>" # in line with gpt2
@@ -64,8 +72,9 @@ MODULUS = 97
 NUMS = list(range(MODULUS))
 MODULUS_BIJECTIONS = 10
 NUMS_BIJECTIONS = list(range(MODULUS_BIJECTIONS))
-BIJECTIVE_OPERATORS = ["pfactor", "2x", "x**3", "2x+1"]
 SPACE = " "
+BIJECTIVE_OPERATORS = ["pfactor", "2x", "x**3", "2x+1", "x+11"]
+
 DEFAULT_DATA_DIR = "data"
 
 
@@ -103,6 +112,16 @@ class ArithmeticTokenizerDigits:
         self.max_length = max_length
         self.max_digits = max_digits
         self.use_regression = use_regression
+
+    # def _encode(self, s: str) -> Tensor:
+    #     output = np.ones(self.max_length)*0 # using EOS token for padding
+    #     for i, t in enumerate(s.split(" ")):
+    #         if t.isdigit():
+    #             for j, c in enumerate(reversed(t)):
+    #                 output[i*self.max_digits+j] = self.stoi[c]
+    #         else:
+    #             output[i*self.max_digits] = self.stoi[t]
+    #     return LongTensor(output)
 
     def _encode(self, s: str) -> Tensor:
         def is_float(s):
@@ -305,6 +324,8 @@ class ArithmeticDataset:
             self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4, use_regression=self.use_regression)
         elif operator == '2x+1':
             self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4, use_regression=self.use_regression)
+        elif operator == 'x+11':
+            self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=50, max_digits=4, use_regression=self.use_regression)
         elif operator == 'x**3':
             self.tokenizer = ArithmeticTokenizerDigits(data_dir, max_length=100, max_digits=12, use_regression=self.use_regression)
         elif operator == 'pfactor':
@@ -445,7 +466,7 @@ class ArithmeticDataset:
         elif operator == "x**3":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [[(i.item())**3] for i in operands]
-            rhs_list = normalize(rhs)
+            # rhs_list = normalize(rhs)
         elif operator == "pfactor":
             operands= torch.tensor(list(range(10000))).unsqueeze(-1)
             rhs = [list(primefac.primefac(i.item())) for i in operands]
@@ -488,6 +509,44 @@ class ArithmeticDataset:
             elif operator == 'idx_add':
                 # add the index to each element
                 rhs = operands + torch.arange(list_len)
+            elif operator == 'caesarcipher_permutev1': # since this is first it won't go into the permute case
+                elems = map(np.array, itertools.permutations(list(range(5))))
+                operands = [torch.from_numpy(i) for i in elems]
+                rhs = []
+                for i in operands:
+                    rhs.append([(i[1] + 1) % 5, (i[0] + 1) % 5, (i[2] + 1) % 5, (i[3] + 1) % 5, (i[4] + 1) % 5])
+                operands = torch.stack(operands)
+                rhs = torch.tensor(rhs)
+            elif operator == 'caesarcipher':
+                rhs = (operands + 1) % 5
+            elif 'permute' in operator:
+                elems = map(np.array, itertools.permutations(list(range(5))))
+                operands = [torch.from_numpy(i) for i in elems]
+                rhs = []
+                for i in operands:
+                    if operator == 'permutev1':
+                        rhs.append([i[1], i[0], i[2], i[3], i[4]])
+                    elif operator == 'permutev2':
+                        rhs.append([i[1], i[0], i[3], i[4], i[2]])
+                    elif operator == 'permutev3':
+                        rhs.append([i[4], i[0], i[1], i[2], i[3]])
+                    else:
+                        raise NotImplementedError
+                operands = torch.stack(operands)
+                rhs = torch.tensor(rhs)
+            elif 'strdelete' in operator:
+                elems = map(np.array, itertools.permutations(list(range(5))))
+                operands = [torch.from_numpy(i) for i in elems]
+                rhs = []
+                for i in operands:
+                    if operator == 'strdeletev1':
+                        rhs.append([0, i[1], i[2], i[3], i[4]])
+                    elif operator == 'strdeletev2':
+                        rhs.append([0, 0, i[2], i[3], i[4]])
+                    else:
+                        raise NotImplementedError
+                operands = torch.stack(operands)
+                rhs = torch.tensor(rhs)
             else:
                 raise NotImplementedError
             rhs_list = rhs.tolist()
@@ -556,7 +615,7 @@ class ArithmeticDataset:
     def make_data(cls, operator, operands=None, shuffle=True, seed=0, hparams=None) -> List[str]:
         operator, noise_level = cls._get_operator_and_noise_level(operator)
         assert operator in VALID_OPERATORS
-        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add"]:
+        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
             data = cls._make_binary_operation_data(operator, hparams)
         else:
             data = cls._make_unary_operation_data(operator, operands, hparams)
