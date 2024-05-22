@@ -58,8 +58,8 @@ VALID_OPERATORS = {
     "caesarcipher_permutev1": "caesarcipher_permutev1"
 }
 
-EOS_TOKEN = "<|endoftext|>" # in line with gpt2
-SOS_TOKEN = "<|startoftext|>" # in line with gpt2
+EOS_TOKEN = "<|eos|>" # in line with gpt2
+SOS_TOKEN = "<|sos|>" # in line with gpt2
 PAD_TOKEN = "<|pad|>"
 DOT = "."
 E_TOKEN = 'e'
@@ -328,6 +328,8 @@ class ArithmeticDataset:
             self.data = self.tokenizer.encode(data)
         else:
             self.data = data
+
+        # st()
 
     def __len__(self) -> int:
         """

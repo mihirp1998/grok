@@ -99,6 +99,7 @@ class TrainableTransformer(LightningModule):
             hparams.embed_style,
             hparams.non_linearity,
             weight_noise=self.hparams.weight_noise,
+            operator=self.hparams.math_operator,
         )
 
         self.margin = torch.Tensor([0])
@@ -571,11 +572,14 @@ class TrainableTransformer(LightningModule):
         forward_loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
             batch=batch, batch_idx=batch_idx, train=True,
         )
+        # print(batch['text'].shape, y_hat_rhs.shape, y_rhs.shape, x_lhs.shape)
+
         forward_loss = forward_loss * self.hparams.f_coef
         losses.append(forward_loss)
         # recreate batch
         # batch_copy = copy.deepcopy(batch)
         # data
+        # st()
         if self.hparams.cyclic_consistency:
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
             eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
@@ -584,7 +588,7 @@ class TrainableTransformer(LightningModule):
             y_hat_rhs_pred = y_hat_rhs.argmax(1)
 
             data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
-            assert (batch['text'][0][1] == data_tmp[:,:-1][0]).all()
+            # assert (batch['text'][0][1] == data_tmp[:,:-1][0]).all()
 
             data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
 
@@ -638,10 +642,13 @@ class TrainableTransformer(LightningModule):
 
             data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
             # st()
-            assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
-
-            data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
-            st()
+            # assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
+            # st()
+            if self.hparams.math_operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+                data =  torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
+            else:
+                data = torch.cat([eos_token, x_lhs[:,1].unsqueeze(1), y_rhs[:,:-1], eq_token_index, x_lhs[:,2:], eos_token], dim=1)
+            # st()
             batch_val_cc['text']  = data[:,:-1]
             batch_val_cc['target']  = data[:,1:]
 
@@ -650,6 +657,8 @@ class TrainableTransformer(LightningModule):
             cc_dict['y_rhs'] = y_rhs[:,:-1]
             cc_dict['eq_token_index'] = eq_token_index
             cc_dict['x_lhs'] = x_lhs[:,1:]
+
+            # print(batch_val_cc['text'].shape, y_hat_rhs.shape, y_rhs.shape, x_lhs.shape)
 
             inv_loss_cc_tta, inv_accuracy_cc_tta, inv_coeff_cc_tta, inv_x_lhs_cc_tta, inv_y_hat_rhs_cc_tta, inv_y_rhs_cc_tta, inv_attentions_cc_tta, inv_values_cc_tta = self._step(
                 batch=batch_val_cc, batch_idx=batch_idx, train=False, inverse_mapping=True, cc=True, cc_dict= cc_dict
