@@ -110,8 +110,11 @@ python main.py  +hydra/launcher=matrix  math_operator=+,s5,-,*,/,**2+,**3+,x**2+
 python main.py  +hydra/launcher=grogu  math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+- train_data_pct=50 exp=f group=m17 -m
 
 
-<<<<<<< HEAD
 python main.py math_operator=+ train_data_pct=50 exp=ff  group=vis
-=======
-python main.py math_operator=+ train_data_pct=50 exp=ff  weight_decay=1.0 debug=True
->>>>>>> 6059a9c5e32c45590e030932ea36c959c4043cb5
+
+python main.py math_operator=+,/,**3+,+-,**2+,- train_data_pct=50 exp=ff  group=vis f_coef=0.0 tta_coef=0.0 plot_pca_last_layer=True +hydra/launcher=matrix -m 
+
+python main.py math_operator=+,/,**3+,+-,**2+,- train_data_pct=50 exp=f  group=vis  plot_pca_last_layer=True +hydra/launcher=grogu -m 
+python main.py math_operator=+,/,**3+,+-,**2+,- train_data_pct=50 exp=ff  group=vis  plot_pca_last_layer=True +hydra/launcher=grogu -m 
+
+squeue -O Partition,UserName,JobID,mem-per-tres,cpus-per-task,tres-per-job,tres-per-node,TimeLeft,ReqNodes,NodeList,Name | grep inver | wc -l
