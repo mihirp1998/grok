@@ -410,6 +410,19 @@ class TrainableTransformer(LightningModule):
                 x = batch["text"][:,0]  # shape = batchsize * context_len
                 y = batch["target"][:,0]  # shape = batchsize * context_len
             cc_dict = None
+
+        if self.hparams.ff_use_diff_splits:
+            if inverse_mapping:
+                backward_pct = self.hparams.backward_pct
+                # only use first backward_pct of the batch (backward_pct is between 0 and 1)
+                x = x[:int(backward_pct*x.shape[0])]
+                y = y[:int(backward_pct*y.shape[0])]
+            else:
+                forward_pct = self.hparams.forward_pct
+                # only use first forward_pct of the batch (forward_pct is between 0 and 1)
+                x = x[:int(forward_pct*x.shape[0])]
+                y = y[:int(forward_pct*y.shape[0])]
+
         if reverse_mode:
             y_hat, attentions, values = self.transformer.reverse(x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping)
         else:

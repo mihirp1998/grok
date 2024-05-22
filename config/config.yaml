@@ -52,6 +52,9 @@ checkpoint_path: None
 data_list_len: 7
 k: 3
 visualize: True
+ff_use_diff_splits: True
+forward_pct: 0.5
+backward_pct: 0.3
 
 
 
