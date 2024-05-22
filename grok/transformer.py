@@ -28,7 +28,7 @@ class Linear(nn.Linear):
         else:
             bias = self.bias
             weight = self.weight
-            
+
         return F.linear(
             input,
             weight,
@@ -269,7 +269,7 @@ class Decoder(nn.Module):
         attentions = []
         values = []
         # ipdb> print(x.shape)
-        # torch.Size([8939, 6, 128])        
+        # torch.Size([8939, 6, 128])
         # st()
         for block in self.blocks:
             a, layer_attentions, layer_values = block(
@@ -314,6 +314,7 @@ class Transformer(nn.Module):
         embed_style: str = "same",
         non_linearity: str = "relu",
         weight_noise: float = 0.0,
+        operator: str = '+'
     ) -> None:
         super().__init__()
 
@@ -326,6 +327,7 @@ class Transformer(nn.Module):
         self.embed_style = embed_style
 
         self.vocab_len = vocab_len
+        self.operator = operator
 
         if embed_style == "seperate":
             self.embedding = Embedding(vocab_len, d_model, weight_noise=weight_noise)  # type: ignore
@@ -335,9 +337,9 @@ class Transformer(nn.Module):
         else:
             self.embedding = Embedding(vocab_len, d_model, weight_noise=weight_noise)  # type: ignore
             self.linear = Linear(d_model, vocab_len, bias=False, weight_noise=weight_noise)
-        
+
         self.modality_embed = nn.Embedding(embedding_dim=1, num_embeddings=2)
-        
+
         self.register_buffer(
             "position_encoding", self._position_encoding(max_context_len, d_model)
         )
@@ -352,7 +354,7 @@ class Transformer(nn.Module):
             weight_noise=weight_noise,
         )
 
-        
+
 
     @staticmethod
     def make_mask(context_len: int) -> Tensor:
@@ -382,7 +384,7 @@ class Transformer(nn.Module):
         return pe + embedded
 
     def embed_cc(self, indices: Tensor) -> Tensor:
-        st()
+        # st()
         context_len = indices.shape[-1]
         pe = self.position_encoding[:context_len, :]  # type: ignore
         embedded = torch.nn.functional.one_hot(indices,self.embedding.weight.shape[0]).float() @ self.embedding.weight
@@ -421,8 +423,7 @@ class Transformer(nn.Module):
         self_attn_mask = self.self_attn_mask[  # type: ignore
             :this_max_context_len, :this_max_context_len
         ]
-        
-        # st()
+
 
         # Decode
         if cc:
@@ -430,18 +431,27 @@ class Transformer(nn.Module):
             eos_token_ = torch.nn.functional.one_hot(cc_dict['eos_token'],self.embedding.weight.shape[0]).float()
             eq_token_ = torch.nn.functional.one_hot(cc_dict['eq_token_index'],self.embedding.weight.shape[0]).float()
             x_lhs_ = torch.nn.functional.one_hot(cc_dict['x_lhs'],self.embedding.weight.shape[0]).float()
-            
+
             y_hat_gt = torch.nn.functional.one_hot(cc_dict['y_rhs'],self.embedding.weight.shape[0]).float()
-            y_hat_ = cc_dict['y_hat_rhs'].softmax(1)[:,:,0][:,None,:]
-            
-            data = torch.cat([eos_token_, y_hat_, eq_token_, x_lhs_, eos_token_], dim=1)
-            x_probs = data[:,:-1]
-            
+
+            if self.operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+                # default
+                y_hat_ = cc_dict['y_hat_rhs'].softmax(1)[:,:,0][:,None,:]
+                data = torch.cat([eos_token_, y_hat_, eq_token_, x_lhs_, eos_token_], dim=1)
+                x_probs = data[:,:-1]
+            else:
+                y_hat_ = cc_dict['y_hat_rhs'].softmax(1).transpose(1,2)
+                data = torch.cat([eos_token_, x_lhs_[:,1].unsqueeze(1), y_hat_[:,:-1], eq_token_, x_lhs_[:,2:], eos_token_], dim=1)
+                x_probs = data
+
+
+
             context_len = x_probs.shape[-2]
             pe = self.position_encoding[:context_len, :]  # type: ignore
             embedded = x_probs @ self.embedding.weight
-            
+
             x = pe + embedded
+            # print(x.shape)
         else:
             if inverse_mapping:
                 # st()
@@ -458,14 +468,16 @@ class Transformer(nn.Module):
                 x = self.embed(x)
                 # st()
 
+            # print(x.shape)
 
-            
-        
+
+
+
         if inverse_mapping:
             x = x + self.modality_embed(torch.tensor([1]).to(x.device))
         else:
             x = x + self.modality_embed(torch.tensor([0]).to(x.device))
-        
+        # st()
         decoded, attentions, values = self.decoder(
             x, self_attn_mask, save_activations=save_activations
         )
@@ -485,10 +497,10 @@ class Transformer(nn.Module):
             elif self.embed_style == "transpose":
                 y_hat = decoded @ self.embedding.weight.T
             else:
-                assert False            
+                assert False
         else:
             y_hat = self.linear(decoded)
-                    
+
         return y_hat, attentions, values
 
 
@@ -507,7 +519,7 @@ class Transformer(nn.Module):
 
         # Make sure sampling inputs are on the correct device
         x = x.to(self.embedding.weight.device)
-        
+
         # st()
         # make_attention mask
         this_max_context_len = x.shape[-1]
@@ -525,13 +537,13 @@ class Transformer(nn.Module):
             x = self.embed_transpose(x)
         else:
             assert False
-        
+
         if inverse_mapping:
             x = x + self.modality_embed(torch.tensor([1]).to(x.device))
         else:
             x = x + self.modality_embed(torch.tensor([0]).to(x.device))
-            
-        
+
+
         decoded, attentions, values = self.decoder.reverse(
             x, self_attn_mask, save_activations=save_activations
         )
@@ -548,5 +560,5 @@ class Transformer(nn.Module):
             y_hat = decoded @ self.embedding.weight.T
         else:
             assert False
-        
+
         return y_hat, attentions, values
