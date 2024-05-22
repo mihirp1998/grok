@@ -69,6 +69,7 @@ class TrainableTransformer(LightningModule):
         self.training_step_outputs = []
 
         self.prepare_data()
+        self.sample_val_batch = None
 
         # ip_out_map = self.ip_out_map
 
@@ -412,6 +413,7 @@ class TrainableTransformer(LightningModule):
         if reverse_mode:
             y_hat, attentions, values = self.transformer.reverse(x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping)
         else:
+            # st()
             y_hat, attentions, values = self(
                 x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping, cc=cc, cc_dict=cc_dict  # type: ignore
             )  # shape = batchsize * context_len * vocab_size
@@ -644,7 +646,7 @@ class TrainableTransformer(LightningModule):
             # st()
             # assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
             # st()
-            if self.hparams.math_operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+            if self.hparams.math_operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11", 'interval_sorting']:
                 data =  torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
             else:
                 data = torch.cat([eos_token, x_lhs[:,1].unsqueeze(1), y_rhs[:,:-1], eq_token_index, x_lhs[:,2:], eos_token], dim=1)
@@ -836,6 +838,109 @@ class TrainableTransformer(LightningModule):
                 logs['inv_accuracy_cc'] = inv_accuracy_cc
 
             # st()
+            if self.hparams.visualize:
+                if self.hparams.math_operator not in ['2x', '2x+1', 'x+11', 'x**3', 'pfactor']:
+                    START_IDX = 40 # 39 # of 0
+                    END_IDX =  137 # 136 # of 97
+                    NUM_COMPONENTS = 20
+                    C=97
+                else:
+                    START_IDX = 47 # 46 # of 0
+                    END_IDX = 57 # 56 # of 10
+                    NUM_COMPONENTS = 10
+                    C=10
+                def gradient_sim(layer):
+                    torch.set_grad_enabled(True)
+                    # normalize gradient across batch
+                    # def normalize(x):
+                    #     sum1 = x.sum(dim = 1, keepdim = True)
+                    #     return x / sum1
+                    def compute_similarity_matrix(tensor1, tensor2):
+                        # Normalize the tensors
+                        tensor1_normalized = tensor1 / tensor1.norm(dim=1, keepdim=True)
+                        tensor2_normalized = tensor2 / tensor2.norm(dim=1, keepdim=True)
+
+                        # Compute the similarity matrix
+                        similarity_matrix = torch.mm(tensor1_normalized, tensor2_normalized.T)
+
+                        return similarity_matrix
+
+                    def get_loss(y, y_hat, reduction='mean'):
+                        y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
+                        # Note: each sample must have exactly one '=' and all of them must
+                        # have it in the same position.
+                        eq_token_index = self.train_dataset.tokenizer.stoi["="]
+                        eq_position_t = torch.nonzero(y[0, :] == eq_token_index, as_tuple=False)
+                        eq_position = int(eq_position_t.squeeze())
+
+                        # only calculate loss/accuracy on right hand side of the equation
+                        y_rhs = y[..., eq_position + 1 :]
+                        y_hat_rhs = y_hat[..., eq_position + 1 :]
+
+                        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
+                        return loss
+
+                        # l2 norm
+                        # return x / x.norm(p=2)
+                    # create empty figure
+                    fig, ax = plt.subplots()
+
+                    if self.sample_val_batch is None:
+                        # return empty figure
+                        return fig
+
+                    self.transformer.train()
+                    batch = self.sample_val_batch
+                    ip1 = batch['text'][:,0]
+                    label1 = batch['target'][:,0]
+                    # make ip1 require grad
+                    out1, _, _ = self.transformer(ip1)
+                    # loss1 = F.cross_entropy(out1.reshape(-1,256),label1.reshape(-1))
+                    loss1 = get_loss(label1, out1)
+                    loss1.backward()
+                    grad1 = layer.grad[START_IDX:END_IDX, :]
+                    self.transformer.zero_grad()
+                    ip2 = batch['text'][:,1]
+                    label2 = batch['target'][:,1]
+                    out2, _, _ = self.transformer(ip2)
+                    # loss2 = F.cross_entropy(out2.reshape(-1,256),label2.reshape(-1))
+                    loss2 = get_loss(label2, out2)
+                    loss2.backward()
+                    grad2 = layer.grad[START_IDX:END_IDX, :]
+                    # ng1 = normalize(grad1)
+                    # ng2 = normalize(grad2)
+                    # sim = torch.matmul(ng1,ng2.T)
+                    sim = compute_similarity_matrix(grad1, grad2)
+                    self.transformer.zero_grad()
+                    self.transformer.eval()
+                    torch.set_grad_enabled(False)
+                    # 5,3,2,1
+                    # 3,5,1,2
+
+
+
+
+                    # make a heatmap figure and return
+                    # ax.imshow(sim.detach().cpu().numpy())
+                    # ax.colorbar()
+                    # ax.title('Gradient similarity matrix between forward and inverse')
+                    cax = ax.imshow(sim.detach().cpu().numpy(), aspect='auto', interpolation='nearest')
+                    fig.colorbar(cax, ax=ax)
+                    ax.set_title('Gradient similarity matrix between forward and inverse')
+
+
+                    return fig
+
+                embed_grad_sim = gradient_sim(self.transformer.embedding.weight)
+                last_layer_grad_sim = gradient_sim(self.transformer.linear.weight)
+
+
+
+                captions = ['(Train) Gradient Similarity of Embedding Weights', '(Train) Gradient Similarity of Last Layer Weights']
+
+                # log figure to wandb
+                self.logger.log_image(key='PCA', images=[embed_grad_sim, last_layer_grad_sim], step=self.trainer.global_step, caption=captions)
+
             for k, v in logs.items():
                 # self.log(k, v)
                 self.logger.log_metrics({k: v}, step=self.trainer.global_step)
@@ -853,6 +958,7 @@ class TrainableTransformer(LightningModule):
                   attentions, and values
         """
         # st()
+        self.sample_val_batch = batch
         if self.next_epoch_to_eval < self.current_epoch:
             self.next_epoch_to_eval = self.current_epoch
         if self.current_epoch != self.next_epoch_to_eval:
@@ -986,15 +1092,15 @@ class TrainableTransformer(LightningModule):
                     logs["inv_full_train_loss"] = inv_tr_loss
                     logs["inv_full_train_acc"] = inv_tr_acc
 
-            if self.hparams.plot_pca_last_layer:
+            if self.hparams.visualize:
                 if self.hparams.math_operator not in ['2x', '2x+1', 'x+11', 'x**3', 'pfactor']:
-                    START_IDX = 39 # of 0
-                    END_IDX =  136 # of 97
+                    START_IDX = 40 # 39 # of 0
+                    END_IDX =  137 # 136 # of 97
                     NUM_COMPONENTS = 20
                     C=97
                 else:
-                    START_IDX = 46 # of 0
-                    END_IDX = 56 # of 10
+                    START_IDX = 47 # 46 # of 0
+                    END_IDX = 57 # 56 # of 10
                     NUM_COMPONENTS = 10
                     C=10
 
@@ -1057,6 +1163,91 @@ class TrainableTransformer(LightningModule):
 
                     return fig
 
+                def gradient_sim(layer):
+                    torch.set_grad_enabled(True)
+                    # normalize gradient across batch
+                    # def normalize(x):
+                    #     sum1 = x.sum(dim = 1, keepdim = True)
+                    #     return x / sum1
+                    def compute_similarity_matrix(tensor1, tensor2):
+                        # Normalize the tensors
+                        tensor1_normalized = tensor1 / tensor1.norm(dim=1, keepdim=True)
+                        tensor2_normalized = tensor2 / tensor2.norm(dim=1, keepdim=True)
+
+                        # Compute the similarity matrix
+                        similarity_matrix = torch.mm(tensor1_normalized, tensor2_normalized.T)
+
+                        return similarity_matrix
+
+                    def get_loss(y, y_hat, reduction='mean'):
+                        y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
+                        # Note: each sample must have exactly one '=' and all of them must
+                        # have it in the same position.
+                        eq_token_index = self.train_dataset.tokenizer.stoi["="]
+                        eq_position_t = torch.nonzero(y[0, :] == eq_token_index, as_tuple=False)
+                        eq_position = int(eq_position_t.squeeze())
+
+                        # only calculate loss/accuracy on right hand side of the equation
+                        y_rhs = y[..., eq_position + 1 :]
+                        y_hat_rhs = y_hat[..., eq_position + 1 :]
+
+                        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
+                        return loss
+
+                        # l2 norm
+                        # return x / x.norm(p=2)
+                    # create empty figure
+                    fig, ax = plt.subplots()
+
+                    if self.sample_val_batch is None:
+                        # return empty figure
+                        return fig
+
+                    self.transformer.train()
+                    batch = self.sample_val_batch
+                    ip1 = batch['text'][:,0]
+                    label1 = batch['target'][:,0]
+                    # make ip1 require grad
+                    out1, _, _ = self.transformer(ip1)
+                    # loss1 = F.cross_entropy(out1.reshape(-1,256),label1.reshape(-1))
+                    loss1 = get_loss(label1, out1)
+                    loss1.backward()
+                    grad1 = layer.grad[START_IDX:END_IDX, :]
+                    self.transformer.zero_grad()
+                    ip2 = batch['text'][:,1]
+                    label2 = batch['target'][:,1]
+                    out2, _, _ = self.transformer(ip2)
+                    # loss2 = F.cross_entropy(out2.reshape(-1,256),label2.reshape(-1))
+                    loss2 = get_loss(label2, out2)
+                    loss2.backward()
+                    grad2 = layer.grad[START_IDX:END_IDX, :]
+                    # ng1 = normalize(grad1)
+                    # ng2 = normalize(grad2)
+                    # sim = torch.matmul(ng1,ng2.T)
+                    sim = compute_similarity_matrix(grad1, grad2)
+                    self.transformer.zero_grad()
+                    self.transformer.eval()
+                    torch.set_grad_enabled(False)
+                    # 5,3,2,1
+                    # 3,5,1,2
+
+
+
+
+                    # make a heatmap figure and return
+                    # ax.imshow(sim.detach().cpu().numpy())
+                    # ax.colorbar()
+                    # ax.title('Gradient similarity matrix between forward and inverse')
+                    cax = ax.imshow(sim.detach().cpu().numpy(), aspect='auto', interpolation='nearest')
+                    fig.colorbar(cax, ax=ax)
+                    ax.set_title('Gradient similarity matrix between forward and inverse')
+
+
+                    return fig
+
+
+
+
                 embed_viz = get_circles(self.transformer.embedding.weight[START_IDX:END_IDX, :])
                 last_layer_viz = get_circles(self.transformer.linear.weight[START_IDX:END_IDX, :])
 
@@ -1066,11 +1257,18 @@ class TrainableTransformer(LightningModule):
                 embed_feature_viz = get_feature_viz(self.transformer.embedding.weight[START_IDX:END_IDX, :])
                 last_layer_feature_viz = get_feature_viz(self.transformer.linear.weight[START_IDX:END_IDX, :])
 
+                embed_grad_sim = gradient_sim(self.transformer.embedding.weight)
+                last_layer_grad_sim = gradient_sim(self.transformer.linear.weight)
 
-                captions = ['PCA of Embedding Weights', 'PCA of Last Layer Weights', '2D PCA of Embedding Weights', '2D PCA of Last Layer Weights', 'Feature Viz of Embedding Weights', 'Feature Viz of Last Layer Weights']
+
+
+                captions = ['(Val) PCA of Embedding Weights', '(Val) PCA of Last Layer Weights',
+                            '(Val) 2D PCA of Embedding Weights', '2D PCA of Last Layer Weights',
+                            '(Val) Feature Viz of Embedding Weights', '(Val) Feature Viz of Last Layer Weights',
+                            '(Val) Gradient Similarity of Embedding Weights', '(Val) Gradient Similarity of Last Layer Weights']
 
                 # log figure to wandb
-                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz, embed_2d_viz, last_layer_2d_viz, embed_feature_viz, last_layer_feature_viz], step=self.trainer.global_step, caption=captions)
+                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz, embed_2d_viz, last_layer_2d_viz, embed_feature_viz, last_layer_feature_viz, embed_grad_sim, last_layer_grad_sim], step=self.trainer.global_step, caption=captions)
 
             for k, v in logs.items():
                 # self.log(k, v)

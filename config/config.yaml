@@ -51,7 +51,7 @@ d_key: -1
 checkpoint_path: None
 data_list_len: 7
 k: 3
-plot_pca_last_layer: True
+visualize: True
 
 
 

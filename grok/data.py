@@ -49,6 +49,7 @@ VALID_OPERATORS = {
     'k_shift': 'k_shift',
     'random_swaps': 'random_swaps',
     'idx_add': 'idx_add',
+    'interval_sorting': 'interval_sorting',
     "caesarcipher": "caesarcipher",
     "permutev1": "permutev1",
     "permutev2": "permutev2",
@@ -259,6 +260,8 @@ class ArithmeticTokenizer:
             + list(map(render, NUMS))
             + list(map(render, itertools.permutations(range(5))))  # s5
         )
+        if len(tokens) > 256:
+            tokens = tokens[:256]
         return tokens
 
 
@@ -520,6 +523,9 @@ class ArithmeticDataset:
                         raise NotImplementedError
                 operands = torch.stack(operands)
                 rhs = torch.tensor(rhs)
+            elif operator == 'interval_sorting':
+                k = hparams.get("k", 3)
+                rhs = torch.cat([torch.sort(operands[:, i:i+k], dim=1).values for i in range(0, list_len, k)], dim=1)
             else:
                 raise NotImplementedError
             rhs_list = rhs.tolist()
@@ -594,7 +600,7 @@ class ArithmeticDataset:
         assert operator in VALID_OPERATORS
 
 
-        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11",'interval_sorting']:
             data, ip_out_map = cls._make_binary_operation_data(operator, hparams=hparams)
         else:
             # st()
