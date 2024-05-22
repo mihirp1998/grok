@@ -1,3 +1,5 @@
+*.pth
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -136,3 +138,4 @@ dmypy.json
 default
 checkpoints
 .vscode
+model.pth
