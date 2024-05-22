@@ -1246,6 +1246,34 @@ class TrainableTransformer(LightningModule):
                     return fig
 
 
+                def get_fourier(layer):
+                    p=128
+                    fourier_basis = []
+                    fourier_basis.append(torch.ones(p)/np.sqrt(p))
+                    fourier_basis_names = ['Const']
+                    # Note that if p is even, we need to explicitly add a term for cos(kpi), ie
+                    # alternating +1 and -1
+                    for i in range(1, p//2):
+                        fourier_basis.append(torch.cos(2*torch.pi*torch.arange(p)*i/p))
+                        fourier_basis.append(torch.sin(2*torch.pi*torch.arange(p)*i/p))
+                        fourier_basis[-2]/=fourier_basis[-2].norm()
+                        fourier_basis[-1]/=fourier_basis[-1].norm()
+                        fourier_basis_names.append(f'cos {i}')
+                        fourier_basis_names.append(f'sin {i}')
+                    fourier_basis = torch.stack(fourier_basis, dim=0).to(layer.device)
+                    ft = layer @ fourier_basis.T
+                    ft_pow2 = ft.pow(2).sum(0)
+                    # make a figure with x axis being the fourier basis and y axis being the norm
+                    fig, ax = plt.subplots()
+                    ax.plot(ft_pow2.detach().cpu().numpy())
+                    ax.set_title('Fourier basis of the weights')
+
+                    # set y label
+                    ax.set_ylabel('Norm')
+                    # set x label
+                    ax.set_xlabel('Basis')
+                    return fig
+
 
 
                 embed_viz = get_circles(self.transformer.embedding.weight[START_IDX:END_IDX, :])
@@ -1260,15 +1288,19 @@ class TrainableTransformer(LightningModule):
                 embed_grad_sim = gradient_sim(self.transformer.embedding.weight)
                 last_layer_grad_sim = gradient_sim(self.transformer.linear.weight)
 
+                embed_fourier = get_fourier(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                last_layer_fourier = get_fourier(self.transformer.linear.weight[START_IDX:END_IDX, :])
+
 
 
                 captions = ['(Val) PCA of Embedding Weights', '(Val) PCA of Last Layer Weights',
                             '(Val) 2D PCA of Embedding Weights', '2D PCA of Last Layer Weights',
                             '(Val) Feature Viz of Embedding Weights', '(Val) Feature Viz of Last Layer Weights',
-                            '(Val) Gradient Similarity of Embedding Weights', '(Val) Gradient Similarity of Last Layer Weights']
+                            '(Val) Gradient Similarity of Embedding Weights', '(Val) Gradient Similarity of Last Layer Weights',
+                            '(Val) Fourier of Embedding Weights', '(Val) Fourier of Last Layer Weights']
 
                 # log figure to wandb
-                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz, embed_2d_viz, last_layer_2d_viz, embed_feature_viz, last_layer_feature_viz, embed_grad_sim, last_layer_grad_sim], step=self.trainer.global_step, caption=captions)
+                self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz, embed_2d_viz, last_layer_2d_viz, embed_feature_viz, last_layer_feature_viz, embed_grad_sim, last_layer_grad_sim, embed_fourier, last_layer_fourier], step=self.trainer.global_step, caption=captions)
 
             for k, v in logs.items():
                 # self.log(k, v)
