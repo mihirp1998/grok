@@ -637,7 +637,7 @@ class TrainableTransformer(LightningModule):
             )
 
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
-            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|endoftext|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
+            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
             batch_val_cc = copy.deepcopy(batch_val)
             cc_dict = {}
             # y_hat_rhs_pred = y_hat_rhs.argmax(1)
@@ -646,7 +646,7 @@ class TrainableTransformer(LightningModule):
             # st()
             # assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
             # st()
-            if self.hparams.math_operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+            if self.hparams.math_operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","interval_sorting","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
                 data =  torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
             else:
                 data = torch.cat([eos_token, x_lhs[:,1].unsqueeze(1), y_rhs[:,:-1], eq_token_index, x_lhs[:,2:], eos_token], dim=1)

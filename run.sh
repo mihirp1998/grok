@@ -118,3 +118,23 @@ python main.py math_operator=+,/,**3+,+-,**2+,- train_data_pct=50 exp=f  group=v
 python main.py math_operator=+,/,**3+,+-,**2+,- train_data_pct=50 exp=ff  group=vis  plot_pca_last_layer=True +hydra/launcher=grogu -m 
 
 squeue -O Partition,UserName,JobID,mem-per-tres,cpus-per-task,tres-per-job,tres-per-node,TimeLeft,ReqNodes,NodeList,Name | grep inver | wc -l
+
+
+
+sort,reverse,copy,pfactor,2x,x**3,2x+1,interleaved_halves,reverse_pool,k_shift,random_swaps,idx_add,caesarcipher_permutev1,caesarcipher,permutev1,permutev2,permutev3,strdeletev1,strdeletev2,pfactor,2x,x**3,2x+1,x+11
+
+
+python main.py  +hydra/launcher=grogu  math_operator=sort,reverse,copy,pfactor,2x,x**3,2x+1,interleaved_halves,reverse_pool,k_shift,random_swaps,idx_add,caesarcipher_permutev1,caesarcipher,permutev1,permutev2,permutev3,strdeletev1,strdeletev2,pfactor,2x,x**3,2x+1,x+11 train_data_pct=50 exp=ff group=m19 -m
+
+
+2x
+2x+1
+pfactor
+pfactor
+x**3
+
+python main.py  +hydra/launcher=grogu  math_operator=pfactor,x**3 train_data_pct=50 exp=ff max_context_len=100 group=m19 -m
+
+
+python main.py  +hydra/launcher=grogu  math_operator=pfactor,x**3 train_data_pct=50 exp=ff max_context_len=100 group=m19 -m
++hydra/launcher=matrix  -m
