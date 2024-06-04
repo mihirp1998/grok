@@ -20,6 +20,7 @@ def main(args: DictConfig):
     # st(
     wandb.login(key='899662853ead8246d39f962194401e222ad8517a', relogin=True)
     print(args)
+    args.slurm_id = os.environ.get("SLURM_JOB_ID", None)
     args.logdir = os.path.abspath(args.logdir)
     args.datadir = os.path.abspath(args.datadir)
     grok.training.train(args)

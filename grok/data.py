@@ -50,6 +50,7 @@ VALID_OPERATORS = {
     'k_shift': 'k_shift',
     'random_swaps': 'random_swaps',
     'idx_add': 'idx_add',
+    'interval_sorting': 'interval_sorting',
     "caesarcipher": "caesarcipher",
     "permutev1": "permutev1",
     "permutev2": "permutev2",
@@ -59,8 +60,8 @@ VALID_OPERATORS = {
     "caesarcipher_permutev1": "caesarcipher_permutev1"
 }
 
-EOS_TOKEN = "<|endoftext|>" # in line with gpt2
-SOS_TOKEN = "<|startoftext|>" # in line with gpt2
+EOS_TOKEN = "<|eos|>" # in line with gpt2
+SOS_TOKEN = "<|sos|>" # in line with gpt2
 PAD_TOKEN = "<|pad|>"
 DOT = "."
 E_TOKEN = 'e'
@@ -254,12 +255,15 @@ class ArithmeticTokenizer:
 
     @classmethod
     def get_tokens(cls):
+        
         tokens = (
             [EOS_TOKEN, EQ_TOKEN]
             + list(sorted(list(VALID_OPERATORS.keys())))
             + list(map(render, NUMS))
             + list(map(render, itertools.permutations(range(5))))  # s5
         )
+        if len(tokens) > 256:
+            tokens = tokens[:256]
         return tokens
 
 
@@ -327,12 +331,13 @@ class ArithmeticDataset:
             self.tokenizer = ArithmeticTokenizer(data_dir)
         self.name = name
         self.train = train
-        # st()
         if isinstance(data, list):
             # st()
             self.data = self.tokenizer.encode(data)
         else:
             self.data = data
+
+        # st()
 
     def __len__(self) -> int:
         """
@@ -489,6 +494,9 @@ class ArithmeticDataset:
             elif operator == 'idx_add':
                 # add the index to each element
                 rhs = operands + torch.arange(list_len)
+            elif operator == 'interval_sorting':
+                k = hparams.get("k", 3)
+                rhs = torch.cat([torch.sort(operands[:, i:i+k], dim=1).values for i in range(0, list_len, k)], dim=1)                
             elif operator == 'caesarcipher_permutev1': # since this is first it won't go into the permute case
                 elems = map(np.array, itertools.permutations(list(range(5))))
                 operands = [torch.from_numpy(i) for i in elems]
@@ -527,6 +535,9 @@ class ArithmeticDataset:
                         raise NotImplementedError
                 operands = torch.stack(operands)
                 rhs = torch.tensor(rhs)
+            elif operator == 'interval_sorting':
+                k = hparams.get("k", 3)
+                rhs = torch.cat([torch.sort(operands[:, i:i+k], dim=1).values for i in range(0, list_len, k)], dim=1)
             else:
                 raise NotImplementedError
             rhs_list = rhs.tolist()
@@ -601,7 +612,7 @@ class ArithmeticDataset:
         assert operator in VALID_OPERATORS
 
 
-        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+        if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11",'interval_sorting']:
             data, ip_out_map, out_to_inputs = cls._make_binary_operation_data(operator, hparams=hparams)
         else:
             # st()
@@ -695,7 +706,7 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
                                * int > 1 means that specific batch size
         :returns: the actual batchsize to use
         """
-
+        # st()
         if batchsize_hint == -1:
             return ds_size
         elif batchsize_hint == 0:

@@ -1,9 +1,8 @@
-#!/usr/bin/env python
-
 import argparse
 import copy
 import wandb
 import matplotlib.pyplot as plt
+from PIL import Image
 # import data
 import time
 import json
@@ -13,6 +12,8 @@ import math
 import os
 import sys
 import pickle
+import seaborn as sns
+
 from argparse import ArgumentParser, Namespace
 from functools import reduce
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -71,6 +72,11 @@ class TrainableTransformer(LightningModule):
         hparams_dict = hparams
 
         self.val_accuracy = []
+        self.inv_train_loss = []
+        self.inv_val_loss = []
+        
+        self.validation_epoch_num = 0 
+        self.train_epoch_num = 0 
 
         for key in hparams.keys():
             self.hparams[key]=hparams_dict[key]
@@ -81,7 +87,8 @@ class TrainableTransformer(LightningModule):
         self.training_step_outputs = []
 
         self.prepare_data()
-        # st()
+        self.sample_val_batch = None
+
         ip_out_map = self.ip_out_map
 
         # now print the degree of bijectivity by calculating how many inputs map to the each output
@@ -111,6 +118,7 @@ class TrainableTransformer(LightningModule):
             hparams.embed_style,
             hparams.non_linearity,
             weight_noise=self.hparams.weight_noise,
+            operator=self.hparams.math_operator,
         )
 
         self.margin = torch.Tensor([0])
@@ -420,9 +428,11 @@ class TrainableTransformer(LightningModule):
                 x = batch["text"][:,0]  # shape = batchsize * context_len
                 y = batch["target"][:,0]  # shape = batchsize * context_len
             cc_dict = None
+        # st()
         if reverse_mode:
             y_hat, attentions, values = self.transformer.reverse(x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping)
         else:
+            # st()
             y_hat, attentions, values = self(
                 x=x, save_activations=self.hparams.save_activations, inverse_mapping=inverse_mapping, cc=cc, cc_dict=cc_dict  # type: ignore
             )  # shape = batchsize * context_len * vocab_size
@@ -438,13 +448,20 @@ class TrainableTransformer(LightningModule):
         y_rhs = y[..., eq_position + 1 :]
         y_hat_rhs = y_hat[..., eq_position + 1 :]
         x_lhs = x[..., : eq_position + 1]
+        
+        
+        if self.hparams.save_activations:
+            eq_activation = torch.stack([torch.stack(val) for val in values])[:,:,:,eq_position]
+        else:
+            eq_activation = None
+        
         # st()
-
+        
         if train:
             coeff = float(batch["target"].shape[0]) / len(self.train_dataset)
         else:
             coeff = float(batch["target"].shape[0]) / len(self.val_dataset)
-        # st()
+
         loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
         if inverse_mapping:
             true_positives  = []
@@ -503,7 +520,7 @@ class TrainableTransformer(LightningModule):
                 else:
                     grad_vec = torch.cat((grad_vec, p.grad.data.view(-1)))
             return loss, grad_vec
-        return loss, acc, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values
+        return loss, acc, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values, eq_activation
 
 
     def _save_inputs(self, outputs: Dict, ds: str) -> None:
@@ -571,6 +588,7 @@ class TrainableTransformer(LightningModule):
             attentions = self._merge_batch_activations(partial_attentions)
             partial_values = list([o["partial_values"] for o in outputs])
             values = self._merge_batch_activations(partial_values)
+            # st()
             output["attentions"] = attentions
             output["values"] = values
         if self.hparams.save_outputs or self.hparams.save_activations:  # type: ignore
@@ -596,14 +614,27 @@ class TrainableTransformer(LightningModule):
 
         start = time.time()
         losses = []
-        forward_loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
-            batch=batch, batch_idx=batch_idx, train=True,
-        )
-        forward_loss = forward_loss * self.hparams.f_coef
-        losses.append(forward_loss)
+        # st()
+        if not self.hparams.inverse_mode:
+            forward_loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values,eq_activation = self._step(
+                batch=batch, batch_idx=batch_idx, train=True,
+            )
+            forward_loss = forward_loss * self.hparams.f_coef
+            losses.append(forward_loss)            
+        else:
+            forward_loss = torch.tensor(0.0)
+            accuracy = torch.tensor(0.0)
+            y_hat_rhs = None
+            attentions = None
+            values = None
+            x_lhs = None
+        # print(batch['text'].shape, y_hat_rhs.shape, y_rhs.shape, x_lhs.shape)
+
+
         # recreate batch
         # batch_copy = copy.deepcopy(batch)
         # data
+        # st()
         if self.hparams.cyclic_consistency:
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
             eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch['text'].shape[0])[:,None].to(x_lhs.device)
@@ -654,21 +685,24 @@ class TrainableTransformer(LightningModule):
             #     batch_val = next(self.val_dataloader())
             # st()
 
-            loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
+            loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values, _ = self._step(
                 batch=batch_val, batch_idx=batch_idx, train=False
             )
 
             eq_token_index = torch.tensor(self.train_dataset.tokenizer.stoi["="]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
-            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|endoftext|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
+            eos_token = torch.tensor(self.train_dataset.tokenizer.stoi["<|eos|>"]).repeat(batch_val['text'].shape[0])[:,None].to(batch_val['text'].device)
             batch_val_cc = copy.deepcopy(batch_val)
             cc_dict = {}
             # y_hat_rhs_pred = y_hat_rhs.argmax(1)
 
             data_tmp = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
             # st()
-            assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
-            
-            data = torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)        
+            # assert (batch_val['text'][0][1] == data_tmp[:,:-1][0]).all()
+            # st()
+            if self.hparams.math_operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11", 'interval_sorting']:
+                data =  torch.cat([eos_token, y_rhs[:,:-1], eq_token_index, x_lhs[:,1:], eos_token], dim=1)
+            else:
+                data = torch.cat([eos_token, x_lhs[:,1].unsqueeze(1), y_rhs[:,:-1], eq_token_index, x_lhs[:,2:], eos_token], dim=1)
             # st()
             batch_val_cc['text']  = data[:,:-1]
             batch_val_cc['target']  = data[:,1:]
@@ -679,7 +713,9 @@ class TrainableTransformer(LightningModule):
             cc_dict['eq_token_index'] = eq_token_index
             cc_dict['x_lhs'] = x_lhs[:,1:]
 
-            inv_loss_cc_tta, inv_accuracy_cc_tta, inv_coeff_cc_tta, inv_x_lhs_cc_tta, inv_y_hat_rhs_cc_tta, inv_y_rhs_cc_tta, inv_attentions_cc_tta, inv_values_cc_tta = self._step(
+            # print(batch_val_cc['text'].shape, y_hat_rhs.shape, y_rhs.shape, x_lhs.shape)
+
+            inv_loss_cc_tta, inv_accuracy_cc_tta, inv_coeff_cc_tta, inv_x_lhs_cc_tta, inv_y_hat_rhs_cc_tta, inv_y_rhs_cc_tta, inv_attentions_cc_tta, inv_values_cc_tta,_ = self._step(
                 batch=batch_val_cc, batch_idx=batch_idx, train=False, inverse_mapping=True, cc=True, cc_dict= cc_dict
             )
             # st()
@@ -692,17 +728,21 @@ class TrainableTransformer(LightningModule):
             batch_2 = next(self.train_iterator_2)
             batch_2['text'] = batch_2['text'].to(self.device)
             batch_2['target'] = batch_2['target'].to(self.device)
-            loss_2, accuracy_2, coeff_2, x_lhs_2, y_hat_rhs_2, y_rhs_2, attentions_2, values_2 = self._step(
-                batch=batch_2, batch_idx=batch_idx, train=True
+            loss_2, accuracy_2, coeff_2, x_lhs_2, y_hat_rhs_2, y_rhs_2, attentions_2, values_2,inv_eq_activation = self._step(
+                batch=batch_2, batch_idx=batch_idx, train=True, inverse_mapping=True
             )
             loss_2 = loss_2 * self.hparams.multi_coef
             losses.append(loss_2)
-        if self.hparams.forward_forward_mode:
-            inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
+        if self.hparams.forward_forward_mode or self.hparams.inverse_mode:
+            # st()
+            inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values, inv_eq_activation = self._step(
                 batch=batch, batch_idx=batch_idx, train=True, inverse_mapping=True
             )
             inv_loss = inv_loss * self.hparams.inv_coef
             losses.append(inv_loss)
+            if self.hparams.inverse_mode:
+                coeff = inv_coeff
+            
 
         elif self.hparams.reverse_mode:
             inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
@@ -739,7 +779,7 @@ class TrainableTransformer(LightningModule):
             output["inv_loss_cc_tta"] = inv_loss_cc_tta
             output["inv_accuracy_cc_tta"] = inv_accuracy_cc_tta
 
-        if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
+        if self.hparams.forward_forward_mode or self.hparams.reverse_mode or self.hparams.inverse_mode:
             # outputs['inv_loss'] = inv_loss
             output['inv_partial_train_loss'] = inv_loss
             output['inv_partial_train_accuracy'] = inv_accuracy
@@ -771,10 +811,11 @@ class TrainableTransformer(LightningModule):
         epoch_is_to_be_logged = True
 
         outputs = self.training_step_outputs
-
+        
         # st()
 
         if epoch_is_to_be_logged and len(outputs) > 0:
+            self.train_epoch_num = self.train_epoch_num +1 
             self.next_train_epoch_to_log = max(
                 int(1.01 * self.next_train_epoch_to_log),
                 self.next_train_epoch_to_log + 1,
@@ -787,13 +828,14 @@ class TrainableTransformer(LightningModule):
                     print(outputs)
                     raise e
                 perplexity = torch.exp(loss)
+                # st()
                 accuracy = torch.stack(
                     [x["partial_train_accuracy"] for x in outputs]
                 ).sum()
 
                 forward_loss = torch.stack([x["forward_loss"] for x in outputs]).mean()
 
-                if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
+                if self.hparams.forward_forward_mode or self.hparams.reverse_mode  or self.hparams.inverse_mode:
                     inv_loss = torch.stack([x["inv_partial_train_loss"] for x in outputs]).mean()
                     inv_perplexity = torch.exp(inv_loss)
                     inv_accuracy = torch.stack(
@@ -823,12 +865,12 @@ class TrainableTransformer(LightningModule):
                 if self.current_epoch == 0:
                     self._save_inputs(outputs, ds="train")
                 self._save_activations(outputs, ds="train")
-            # st()
+            
             logs = {
                 "train_loss": loss,
-                'forward_loss': forward_loss,
-                "train_accuracy": accuracy,
-                "train_perplexity": perplexity,
+                # 'forward_loss': forward_loss,
+                # "train_accuracy": accuracy,
+                # "train_perplexity": perplexity,
                 "learning_rate": first_lr,
                 "len_train_ds": len(self.train_dataset),
                 "len_val_ds": len(self.val_dataset),
@@ -837,25 +879,146 @@ class TrainableTransformer(LightningModule):
                 "fwd_time_in_epoch": self.fwd_time_in_epoch,
             }
             # st()
-
-            if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
-                logs['inv_loss'] = inv_loss
+            # if self.hparams.forward_forward_mode or self.hparams.reverse_mode or self.hparams.inverse_mode:
+                # logs['inv_loss_training'] = inv_loss
                 # logs['inv_perplexity'] = torch.exp(inv_loss)
-                # pass
-                logs['inv_accuracy'] = inv_accuracy
+                # logs['inv_accuracy'] = inv_accuracy
                 # st()
 
-            if self.hparams.do_tta:
-                logs['inv_loss_cc_tta'] = inv_loss_cc_tta
-                logs['inv_accuracy_cc_tta'] = inv_accuracy_cc_tta
+            # if self.hparams.do_tta:
+            #     logs['inv_loss_cc_tta'] = inv_loss_cc_tta
+            #     logs['inv_accuracy_cc_tta'] = inv_accuracy_cc_tta
 
 
-            if self.hparams.cyclic_consistency:
-                logs['inv_loss_cc'] = inv_loss_cc
-                logs['inv_accuracy_cc'] = inv_accuracy_cc
+            # if self.hparams.cyclic_consistency:
+            #     logs['inv_loss_cc'] = inv_loss_cc
+            #     logs['inv_accuracy_cc'] = inv_accuracy_cc
 
             # st()
-            wandb.log(logs, step=self.trainer.global_step)
+            if self.hparams.visualize:
+                # st()
+                if self.hparams.math_operator == 'interval_sorting':
+                    START_IDX = 40
+                    END_IDX =  47
+                    NUM_COMPONENTS = 8
+                    C=7                
+                elif self.hparams.math_operator not in ['2x', '2x+1', 'x+11', 'x**3', 'pfactor']:
+                    START_IDX = 40 # 39 # of 0
+                    END_IDX =  137 # 136 # of 97
+                    # NUM_COMPONENTS = 20
+                    NUM_COMPONENTS = 8
+                    C=97
+                else:
+                    START_IDX = 47 # 46 # of 0
+                    END_IDX = 57 # 56 # of 10
+                    NUM_COMPONENTS = 10
+                    C=10
+                def gradient_sim(layer):
+                    torch.set_grad_enabled(True)
+                    # normalize gradient across batch
+                    # def normalize(x):
+                    #     sum1 = x.sum(dim = 1, keepdim = True)
+                    #     return x / sum1
+                    def compute_similarity_matrix(tensor1, tensor2):
+                        # Normalize the tensors
+                        tensor1_normalized = tensor1 / tensor1.norm(dim=1, keepdim=True)
+                        tensor2_normalized = tensor2 / tensor2.norm(dim=1, keepdim=True)
+
+                        # Compute the similarity matrix
+                        similarity_matrix = torch.mm(tensor1_normalized, tensor2_normalized.T)
+
+                        return similarity_matrix
+
+                    def get_loss(y, y_hat, reduction='mean'):
+                        y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
+                        # Note: each sample must have exactly one '=' and all of them must
+                        # have it in the same position.
+                        eq_token_index = self.train_dataset.tokenizer.stoi["="]
+                        eq_position_t = torch.nonzero(y[0, :] == eq_token_index, as_tuple=False)
+                        eq_position = int(eq_position_t.squeeze())
+
+                        # only calculate loss/accuracy on right hand side of the equation
+                        y_rhs = y[..., eq_position + 1 :]
+                        y_hat_rhs = y_hat[..., eq_position + 1 :]
+
+                        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
+                        return loss
+
+                        # l2 norm
+                        # return x / x.norm(p=2)
+                    # create empty figure
+                    fig, ax = plt.subplots()
+                    # fig = plt.figure()
+
+                    if self.train_dataset is None:
+                        # return empty figure
+                        return fig
+
+                    self.transformer.train()
+                    # batch = self.sample_val_batch
+                    # st()
+                    train_data = self.train_dataset.data.to(self.device)
+                    batch = {"text": train_data[:,:, :-1], "target": train_data[:,:, 1:]}
+                    # st()
+                    ip1 = batch['text'][:,0]
+                    label1 = batch['target'][:,0]
+                    # make ip1 require grad
+                    out1, _, _ = self.transformer(ip1)
+                    # loss1 = F.cross_entropy(out1.reshape(-1,256),label1.reshape(-1))
+                    loss1 = get_loss(label1, out1)
+                    loss1.backward()
+                    # st()
+                    grad1 = layer.grad[START_IDX:END_IDX, :]
+                    self.transformer.zero_grad()
+                    # st()
+                    if self.hparams.multi_task:
+                        train_data_2 = self.train_dataset_2.data.to(self.device)
+                        batch_2 = {"text": train_data_2[:,:, :-1], "target": train_data_2[:,:, 1:]}
+                        ip2 = batch_2['text'][:,0]
+                        label2 = batch_2['target'][:,0]
+                        # st()
+                        # pass
+                    else:
+                        ip2 = batch['text'][:,1]
+                        label2 = batch['target'][:,1]
+                    out2, _, _ = self.transformer(ip2)
+                    # loss2 = F.cross_entropy(out2.reshape(-1,256),label2.reshape(-1))
+                    loss2 = get_loss(label2, out2)
+                    loss2.backward()
+                    grad2 = layer.grad[START_IDX:END_IDX, :]
+                    # ng1 = normalize(grad1)
+                    # ng2 = normalize(grad2)
+                    # sim = torch.matmul(ng1,ng2.T)
+                    sim = compute_similarity_matrix(grad1, grad2)
+                    self.transformer.zero_grad()
+                    self.transformer.eval()
+                    torch.set_grad_enabled(False)
+                    # st()
+                    # 5,3,2,1
+                    # 3,5,1,2
+                    # make a heatmap figure and return
+                    # ax.imshow(sim.detach().cpu().numpy())
+                    # ax.colorbar()
+                    # ax.title('Gradient similarity matrix between forward and inverse')
+                    sns.heatmap(sim.detach().cpu().numpy(), vmin=0, vmax=1, cmap='viridis', cbar=True, ax=ax)
+                    # cax = ax.imshow(sim.detach().cpu().numpy(), aspect='auto', interpolation='nearest', vmin=0, vmax=1)
+                    # fig.colorbar(cax, ax=ax)
+                    ax.set_title('Gradient similarity matrix between forward and inverse')
+                    return fig
+                
+
+                # captions = ['(Train) Gradient Similarity of Embedding Weights', '(Train) Gradient Similarity of Last Layer Weights']
+                # log figure to wandb
+                # st()
+                if self.train_epoch_num % self.hparams.image_vis_epoch_freq == 0:
+                    if self.hparams.grad_sim or self.hparams.all_vis:
+                        embed_grad_sim = gradient_sim(self.transformer.embedding.weight)
+                        last_layer_grad_sim = gradient_sim(self.transformer.linear.weight)                    
+                        logs.update({'(Train) Gradient Similarity of Embedding Weights': wandb.Image(embed_grad_sim), '(Train) Gradient Similarity of Last Layer Weights': wandb.Image(last_layer_grad_sim)})
+                # st()
+                # self.logger.log_image(key='PCA', images=[embed_grad_sim, last_layer_grad_sim], step=self.trainer.global_step, caption=captions)
+            # st()
+            wandb.log(logs, step= self.trainer.global_step)
             # for k, v in logs.items():
             #     # self.log(k, v)
             #     self.logger.log_metrics({k: v}, step=self.trainer.global_step)
@@ -873,6 +1036,7 @@ class TrainableTransformer(LightningModule):
                   attentions, and values
         """
         # st()
+        self.sample_val_batch = batch
         if self.next_epoch_to_eval < self.current_epoch:
             self.next_epoch_to_eval = self.current_epoch
         if self.current_epoch != self.next_epoch_to_eval:
@@ -881,18 +1045,43 @@ class TrainableTransformer(LightningModule):
 
         with torch.no_grad():
             # st()
-            loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values = self._step(
-                batch=batch, batch_idx=batch_idx, train=False
-            )
+            if not self.hparams.inverse_mode:
+                loss, accuracy, coeff, x_lhs, y_hat_rhs, y_rhs, attentions, values, eq_activation = self._step(
+                    batch=batch, batch_idx=batch_idx, train=False
+                )
+                    
+            else:
+                loss = torch.tensor(0.0)
+                accuracy = torch.tensor(0.0)
+                y_hat_rhs = None
+                attentions = None
+                values = None
+                x_lhs = None
+                eq_activation = None
             # st()
-            if self.hparams.forward_forward_mode:
-                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
+            if self.hparams.multi_task:
+                val_data_2 = self.val_dataset_2.data.to(self.device)
+                batch_2 = {"text": val_data_2[:,:, :-1], "target": val_data_2[:,:, 1:]}
+                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values, inv_eq_activation = self._step(
+                    batch=batch_2, batch_idx=batch_idx, train=False, inverse_mapping=True
+                )                
+            if self.hparams.forward_forward_mode or self.hparams.inverse_mode:
+                inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values, inv_eq_activation = self._step(
                     batch=batch, batch_idx=batch_idx, train=False, inverse_mapping=True
                 )
+                if self.hparams.inverse_mode:
+                    coeff = inv_coeff                 
+                
             elif self.hparams.reverse_mode:
                 inv_loss, inv_accuracy, inv_coeff, inv_x_lhs, inv_y_hat_rhs, inv_y_rhs, inv_attentions, inv_values = self._step(
                     batch=batch, batch_idx=batch_idx, train=False, inverse_mapping=True, reverse_mode=True
                 )
+            if self.hparams.save_activations:
+                eq_activation_cov = np.cov(eq_activation.flatten(0,2).cpu().numpy(), inv_eq_activation.flatten(0,2).cpu().numpy(),rowvar=False)
+                fig, ax = plt.subplots()
+                # st()
+                sns.heatmap(eq_activation_cov, cmap='viridis', cbar=True, ax=ax)
+                similar_neurons = ((inv_eq_activation > 0.5) * (eq_activation > 0.5)).sum()
             # st()
 
 
@@ -904,6 +1093,10 @@ class TrainableTransformer(LightningModule):
             "partial_attentions": attentions,
             "partial_values": values,
         }
+        if self.hparams.save_activations:
+            output['activation_cov'] = wandb.Image(fig)
+            output['similar_neurons'] = similar_neurons
+        
         self.val_accuracy.append(coeff * accuracy)
         partial_dict = {
             'val_loss': coeff * loss,
@@ -911,7 +1104,8 @@ class TrainableTransformer(LightningModule):
         }
 
 
-        if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
+        if self.hparams.forward_forward_mode or self.hparams.reverse_mode or self.hparams.inverse_mode:
+            # st()
             output["inv_partial_val_loss"]  = inv_coeff * inv_loss
             output["inv_partial_val_accuracy"]  = inv_coeff * inv_accuracy
 
@@ -942,12 +1136,13 @@ class TrainableTransformer(LightningModule):
             # st()
             assert len(outputs) ==1
 
-            loss = torch.stack([x["partial_val_loss"] for x in outputs]).mean()
+            loss = torch.stack([x["partial_val_loss"] for x in outputs]).sum()
             perplexity = torch.exp(loss)
-            accuracy = torch.stack([x["partial_val_accuracy"] for x in outputs]).mean()
+            accuracy = torch.stack([x["partial_val_accuracy"] for x in outputs]).sum()
             # st()
             max_val_accuracy = max(self.val_accuracy)
-
+            # st()
+            # 
             if self.hparams.save_activations or self.hparams.save_outputs:
                 if self.current_epoch == 0:
                     self._save_inputs(outputs, ds="val")
@@ -959,6 +1154,12 @@ class TrainableTransformer(LightningModule):
                 'max_val_accuracy':max_val_accuracy,
                 "val_perplexity": perplexity,
             }
+            
+            if self.hparams.save_activations:
+                logs['activation_cov'] = outputs[0]['activation_cov'],
+                logs['similar_neurons'] = outputs[0]['similar_neurons']
+                # st()
+                
             to_store = logs.copy()
 
             # make all values float
@@ -967,13 +1168,15 @@ class TrainableTransformer(LightningModule):
                     to_store[k] = v.item()
             self.trainer_step_val_dict[self.trainer.global_step] = to_store
 
-            if self.hparams.forward_forward_mode or self.hparams.reverse_mode:
-                inv_loss = torch.stack([x["inv_partial_val_loss"] for x in outputs]).mean()
+            if self.hparams.forward_forward_mode or self.hparams.reverse_mode or self.hparams.inverse_mode:
+                inv_loss = torch.stack([x["inv_partial_val_loss"] for x in outputs]).sum()
                 inv_perplexity = torch.exp(inv_loss)
-                inv_accuracy = torch.stack([x["inv_partial_val_accuracy"] for x in outputs]).mean()
+                inv_accuracy = torch.stack([x["inv_partial_val_accuracy"] for x in outputs]).sum()
+                self.inv_val_loss.append(inv_loss)
                 logs['inv_val_loss'] = inv_loss
                 logs['inv_val_perplexity'] = inv_perplexity
                 logs['inv_val_accuracy'] = inv_accuracy
+                logs['min_inv_val_loss'] = min(self.inv_val_loss)
                 # st()
 
 
@@ -992,22 +1195,41 @@ class TrainableTransformer(LightningModule):
             # st()
             with torch.no_grad():
                 # st()
-                tr_loss, tr_acc, *_ = self._step(training_data, 0)
-                logs["full_train_loss"] = tr_loss
-                logs["full_train_acc"] = tr_acc
+                if not self.hparams.inverse_mode:
+                    tr_loss, tr_acc, *_ = self._step(training_data, 0)
+                    logs["train_loss"] = tr_loss
+                    logs["train_acc"] = tr_acc
 
-                if self.hparams.forward_forward_mode:
+                if self.hparams.forward_forward_mode or self.hparams.inverse_mode:
                     inv_tr_loss, inv_tr_acc, *_ = self._step(training_data, 0, inverse_mapping=True)
-                    logs["inv_full_train_loss"] = inv_tr_loss
-                    logs["inv_full_train_acc"] = inv_tr_acc
+                    # st()
+                    self.inv_train_loss.append(inv_tr_loss)
+                    logs["inv_train_loss"] = inv_tr_loss
+                    logs["inv_train_acc"] = inv_tr_acc
+                    logs['min_inv_train_loss'] = min(self.inv_train_loss)
                 elif self.hparams.reverse_mode:
                     inv_tr_loss, inv_tr_acc, *_ = self._step(training_data, 0, inverse_mapping=True, reverse_mode=True)
-                    logs["inv_full_train_loss"] = inv_tr_loss
-                    logs["inv_full_train_acc"] = inv_tr_acc
+                    logs["inv_train_loss"] = inv_tr_loss
+                    logs["inv_train_acc"] = inv_tr_acc
 
-            if self.hparams.plot_pca_last_layer:
-                def get_fig(layer):
+            if self.hparams.visualize:
+                if self.hparams.math_operator == 'interval_sorting':
+                    START_IDX = 40
+                    END_IDX =  47
+                    NUM_COMPONENTS = 8
+                    C=7                 
+                elif self.hparams.math_operator not in ['2x', '2x+1', 'x+11', 'x**3', 'pfactor']:
+                    START_IDX = 40 # 39 # of 0
+                    END_IDX =  137 # 136 # of 97
+                    NUM_COMPONENTS = 8
                     C=97
+                else:
+                    START_IDX = 47 # 46 # of 0
+                    END_IDX = 57 # 56 # of 10
+                    NUM_COMPONENTS = 10
+                    C=10
+
+                def get_circles(layer):
                     fig,ax=plt.subplots(1,4,figsize=(20/3*4,4/3*4))
                     aa=[0,1,2,3,4,5,6,7] # put the desired dimensions here
                     for uu in range(0,8,2):
@@ -1015,7 +1237,7 @@ class TrainableTransformer(LightningModule):
                         we=layer #
                         # now use scikit PCA to reduce the dimensionality of the embedding
                         from sklearn.decomposition import PCA
-                        pca = PCA(n_components=20)
+                        pca = PCA(n_components=NUM_COMPONENTS)
                         we2=pca.fit_transform(we.detach().cpu().numpy())
                         X=aa[uu]
                         Y=aa[uu+1]
@@ -1029,35 +1251,222 @@ class TrainableTransformer(LightningModule):
                         for i in range(C):
                             ax[uu//2].annotate(str(i), (we2[i,X],we2[i,Y]))
                     return fig
+
+                def get_2d_pca(layer):
+                    fig,ax=plt.subplots(NUM_COMPONENTS,NUM_COMPONENTS,figsize=(40,15))
+                    # model.load_state_dict(torch.load(model_file,map_location=DEVICE))
+                    # we=model.embed.W_E.T
+                    we = layer
+                    # now use scikit PCA to reduce the dimensionality of the embedding
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=NUM_COMPONENTS)
+                    we2=pca.fit_transform(we.detach().cpu().numpy())
+                    for i in range(NUM_COMPONENTS):
+                        for j in range(NUM_COMPONENTS):
+                            ax[i,j].scatter(we2[:,i],we2[:,j],s=5)
+                    return fig
+
+                def get_feature_viz(layer):
+                    we=layer
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=NUM_COMPONENTS)
+                    we2=pca.fit_transform(we.detach().cpu().numpy())
+                    # make a line plot of each 97 components with each PCA having its own subplot
+
+                    # subplot
+                    fig, axs = plt.subplots(3, 4, figsize=(24, 12))
+
+                    # plt.figure(figsize=(30,6))
+                    for ix in range(min(NUM_COMPONENTS, 12)): # dont ask
+                        #  visualize the PCA components with shape[0] on the x-axis
+                        vs=we2[:,ix] # shape (97, 1)
+                        # make a line plot of each 97 components
+
+                        # plot in the subplot
+                        axs[ix//4, ix%4].plot(vs)
+                        axs[ix//4, ix%4].set_title(f"PCA {ix+1}")
+
+                    return fig
                 # st()
-                # print(self.current_epoch)
-                # if self.current_epoch % 500 == 0:
-                #     st()
+                # st()
+                # print(self.trainer.global_step)
+                self.validation_epoch_num += 1
+                # st()
+                
+                    # log figure to wandb
+                    # self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz], step=self.trainer.global_step, caption=captions)
+                    # st()
+                
+                def gradient_sim(layer):
+                    torch.set_grad_enabled(True)
+                    # normalize gradient across batch
+                    # def normalize(x):
+                    #     sum1 = x.sum(dim = 1, keepdim = True)
+                    #     return x / sum1
+                    def compute_similarity_matrix(tensor1, tensor2):
+                        # Normalize the tensors
+                        tensor1_normalized = tensor1 / tensor1.norm(dim=1, keepdim=True)
+                        tensor2_normalized = tensor2 / tensor2.norm(dim=1, keepdim=True)
+
+                        # Compute the similarity matrix
+                        similarity_matrix = torch.mm(tensor1_normalized, tensor2_normalized.T)
+
+                        return similarity_matrix
+
+                    def get_loss(y, y_hat, reduction='mean'):
+                        y_hat = y_hat.transpose(-2, -1)  # shape = batchsize * vocab_size * context_len
+                        # Note: each sample must have exactly one '=' and all of them must
+                        # have it in the same position.
+                        eq_token_index = self.train_dataset.tokenizer.stoi["="]
+                        eq_position_t = torch.nonzero(y[0, :] == eq_token_index, as_tuple=False)
+                        eq_position = int(eq_position_t.squeeze())
+
+                        # only calculate loss/accuracy on right hand side of the equation
+                        y_rhs = y[..., eq_position + 1 :]
+                        y_hat_rhs = y_hat[..., eq_position + 1 :]
+
+                        loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
+                        return loss
+
+                        # l2 norm
+                        # return x / x.norm(p=2)
+                    # create empty figure
+                    fig, ax = plt.subplots()
+
+                    if self.sample_val_batch is None:
+                        # return empty figure
+                        return fig
+
+                    self.transformer.train()
+                    # st()
+                    val_data = self.val_dataset.data.to(self.device)
+                    batch = {"text": val_data[:,:, :-1], "target": val_data[:,:, 1:]}
+                    # batch = self.sample_val_batch
+                    ip1 = batch['text'][:,0]
+                    label1 = batch['target'][:,0]
+                    # make ip1 require grad
+                    out1, _, _ = self.transformer(ip1)
+                    # loss1 = F.cross_entropy(out1.reshape(-1,256),label1.reshape(-1))
+                    loss1 = get_loss(label1, out1)
+                    loss1.backward()
+                    # st()
+                    grad1 = layer.grad[START_IDX:END_IDX, :]
+                    self.transformer.zero_grad()
+                    # st()
+                    if self.hparams.multi_task:
+                        val_data_2 = self.val_dataset_2.data.to(self.device)
+                        batch_2 = {"text": val_data_2[:,:, :-1], "target": val_data_2[:,:, 1:]}
+                        ip2 = batch_2['text'][:,0]
+                        label2 = batch_2['target'][:,0]
+                        # st()
+                    else:
+                        ip2 = batch['text'][:,1]
+                        label2 = batch['target'][:,1]
+                    out2, _, _ = self.transformer(ip2)
+                    # loss2 = F.cross_entropy(out2.reshape(-1,256),label2.reshape(-1))
+                    loss2 = get_loss(label2, out2)
+                    loss2.backward()
+                    grad2 = layer.grad[START_IDX:END_IDX, :]
+                    # ng1 = normalize(grad1)
+                    # ng2 = normalize(grad2)
+                    # sim = torch.matmul(ng1,ng2.T)
+                    sim = compute_similarity_matrix(grad1, grad2)
+                    self.transformer.zero_grad()
+                    self.transformer.eval()
+                    torch.set_grad_enabled(False)
+                    # 5,3,2,1
+                    # 3,5,1,2
+
+
+
+
+                    # make a heatmap figure and return
+                    # ax.imshow(sim.detach().cpu().numpy())
+                    # ax.colorbar()
+                    # ax.title('Gradient similarity matrix between forward and inverse')
+                    # cax = ax.imshow(sim.detach().cpu().numpy(), aspect='auto', interpolation='nearest', vmin=0, vmax=1)
+                    # fig.colorbar(cax, ax=ax)
+                    # st()
+                    sns.heatmap(sim.detach().cpu().numpy(), vmin=0, vmax=1, cmap='viridis', cbar=True, ax=ax)
+                    ax.set_title('Gradient similarity matrix between forward and inverse')
+
+
+                    return fig
+
+
+                def get_fourier(layer):
+                    p=128
+                    fourier_basis = []
+                    fourier_basis.append(torch.ones(p)/np.sqrt(p))
+                    fourier_basis_names = ['Const']
+                    # Note that if p is even, we need to explicitly add a term for cos(kpi), ie
+                    # alternating +1 and -1
+                    for i in range(1, p//2):
+                        fourier_basis.append(torch.cos(2*torch.pi*torch.arange(p)*i/p))
+                        fourier_basis.append(torch.sin(2*torch.pi*torch.arange(p)*i/p))
+                        fourier_basis[-2]/=fourier_basis[-2].norm()
+                        fourier_basis[-1]/=fourier_basis[-1].norm()
+                        fourier_basis_names.append(f'cos {i}')
+                        fourier_basis_names.append(f'sin {i}')
+                    fourier_basis = torch.stack(fourier_basis, dim=0).to(layer.device)
+                    ft = layer @ fourier_basis.T
+                    ft_pow2 = ft.pow(2).sum(0)
+                    # make a figure with x axis being the fourier basis and y axis being the norm
+                    fig, ax = plt.subplots()
+                    ax.plot(ft_pow2.detach().cpu().numpy())
+                    ax.set_title('Fourier basis of the weights')
+
+                    # set y label
+                    ax.set_ylabel('Norm')
+                    # set x label
+                    ax.set_xlabel('Basis')
+                    return fig
+
+                if self.validation_epoch_num % self.hparams.image_vis_epoch_freq == 0:
+                    # st()
+                    if self.hparams.pca or self.hparams.all_vis:
+                        embed_viz = get_circles(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                        last_layer_viz = get_circles(self.transformer.linear.weight[START_IDX:END_IDX, :])
+                        
+                        logs.update({'PCA of Last Layer Weights':wandb.Image(last_layer_viz)})
+                        logs.update({'PCA of Embedding Weights':wandb.Image(embed_viz)})
                     
-                last_layer_viz = get_fig(self.transformer.linear.weight[39:136, :])
-                embed_viz = get_fig(self.transformer.embedding.weight[39:136, :])
+                    if self.hparams.pca_2d  or self.hparams.all_vis:
+                        embed_2d_viz = get_2d_pca(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                        last_layer_2d_viz = get_2d_pca(self.transformer.linear.weight[START_IDX:END_IDX, :])
+                        
+                        logs.update({'2D PCA of Embedding Weights':wandb.Image(embed_2d_viz)})
+                        logs.update({'2D PCA of Last Layer Weights':wandb.Image(last_layer_2d_viz)})
+                    
+                    if self.hparams.feat_viz  or self.hparams.all_vis:
+                        embed_feature_viz = get_feature_viz(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                        last_layer_feature_viz = get_feature_viz(self.transformer.linear.weight[START_IDX:END_IDX, :])
 
-                captions = ['PCA of Last Layer Weights', 'PCA of Embedding Weights']
+                        logs.update({'Feature Viz of Embedding Weights':wandb.Image(embed_feature_viz)})
+                        logs.update({'Feature Viz of Last Layer Weights':wandb.Image(last_layer_feature_viz)})                
+                    
+                    
+                    if self.hparams.grad_sim or self.hparams.all_vis:
+                        embed_grad_sim = gradient_sim(self.transformer.embedding.weight)                
+                        last_layer_grad_sim = gradient_sim(self.transformer.linear.weight)
 
-                # log figure to wandb
-                # self.logger.log_image(key='PCA', images=[embed_viz, last_layer_viz], step=self.trainer.global_step, caption=captions)
-                # st()
-                logs.update({'PCA of Last Layer Weights':wandb.Image(last_layer_viz)})
-                logs.update({'PCA of Embedding Weights':wandb.Image(embed_viz)})
-                # wandb.log({}, step=self.trainer.global_step)
-                # st()
-                # logs.update({'PCA of Last Layer Weights':wandb.Image(embed_viz)})
+                        logs.update({'(Val) Gradient Similarity of Embedding Weights':wandb.Image(embed_grad_sim)})
+                        logs.update({'(Val) Gradient Similarity of Last Layer Weights':wandb.Image(last_layer_grad_sim)})
+                    
+                    if self.hparams.do_four or self.hparams.all_vis:
+                        embed_fourier = get_fourier(self.transformer.embedding.weight[START_IDX:END_IDX, :])
+                        last_layer_fourier = get_fourier(self.transformer.linear.weight[START_IDX:END_IDX, :])
+                        
+                        logs.update({'(Val) Fourier of Embedding Weights':wandb.Image(embed_fourier)})
+                        logs.update({'(Val) Fourier of Last Layer Weights':wandb.Image(last_layer_fourier)})
             # st()
             wandb.log(logs, step=self.trainer.global_step)
-            # for k, v in logs.items():
-            #     # self.log(k, v)
-            #     self.logger.log_metrics({k: v}, step=self.trainer.global_step)
-            # st()
 
 
 
 
-            # if max_val_accuracy > 99.5:
+
+            # if max_val_accuracy == 100.0:
             #     # st()
             #     exit()
         # save when self.trainer.global_step is a multiple of 1000
