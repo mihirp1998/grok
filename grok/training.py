@@ -44,6 +44,16 @@ from grok.measure import get_sharpness
 
 DEFAULT_LOG_DIR = "logs"
 
+def is_int(element: any) -> bool:
+    #If you expect None to be passed:
+    if element is None: 
+        return False
+    try:
+        int(element)
+        return True
+    except ValueError:
+        return False
+
 
 class TrainableTransformer(LightningModule):
     """
@@ -71,19 +81,19 @@ class TrainableTransformer(LightningModule):
         self.training_step_outputs = []
 
         self.prepare_data()
-
-        # ip_out_map = self.ip_out_map
+        # st()
+        ip_out_map = self.ip_out_map
 
         # now print the degree of bijectivity by calculating how many inputs map to the each output
-        # output_counts = {}
+        output_counts = {}
         # when uncommenting, uncomment one line in data.py as well (line 403)
-        # for k,v in ip_out_map.items():
-            # output_counts[v] = output_counts.get(v, 0) + 1
-
+        for k,v in ip_out_map.items():
+            output_counts[v] = output_counts.get(v, 0) + 1
+        # st()
         # get mean of counts to get the degree of bijectivity
-        # mean_count = np.mean(list(output_counts.values()))
-        # print(f'Mean count for {self.hparams.math_operator} = {mean_count} out of {len(ip_out_map)}')
-        # degree_of_bijectivity = 1 - max_count/len(ip_out_map)
+        mean_count = np.mean(list(output_counts.values()))
+        print(f'Mean count for {self.hparams.math_operator} = {mean_count} out of {len(ip_out_map)}')
+        degree_of_bijectivity = 1 - mean_count/len(ip_out_map)
         # print(f"Degree of bijectivity for {self.hparams.math_operator} = {degree_of_bijectivity}".center(80, '-'))
         # time.sleep(15)
         # sys.exit(0)
@@ -188,7 +198,7 @@ class TrainableTransformer(LightningModule):
         Loads training data to self.train_dataset
         Loads validation data to self.val_dataset
         """
-        (self.train_dataset, self.val_dataset, self.ip_out_map) = ArithmeticDataset.splits(
+        (self.train_dataset, self.val_dataset, self.ip_out_map, self.out_to_inputs) = ArithmeticDataset.splits(
             train_pct=self.hparams.train_data_pct,  # type: ignore
             operator=self.hparams.math_operator,  # type: ignore
             operand_length=self.hparams.operand_length,  # type: ignore
@@ -197,7 +207,7 @@ class TrainableTransformer(LightningModule):
             hparams=self.hparams,
         )
         if self.hparams.multi_task:
-            (self.train_dataset_2, self.val_dataset_2, self.ip_out_map_2) = ArithmeticDataset.splits(
+            (self.train_dataset_2, self.val_dataset_2, self.ip_out_map_2, self.out_to_inputs_2) = ArithmeticDataset.splits(
                 train_pct=self.hparams.train_data_pct,  # type: ignore
                 operator=self.hparams.math_operator_2,  # type: ignore
                 operand_length=self.hparams.operand_length,  # type: ignore
@@ -436,11 +446,27 @@ class TrainableTransformer(LightningModule):
             coeff = float(batch["target"].shape[0]) / len(self.val_dataset)
         # st()
         loss = F.cross_entropy(y_hat_rhs, y_rhs, reduction=reduction)
-
-        with torch.no_grad():
-            acc = self._accuracy(y_hat_rhs, y_rhs)
-            if reduction == "mean":
-                acc = acc.mean()
+        if inverse_mapping:
+            true_positives  = []
+            for idx in range(y_rhs.shape[0]):
+                y_gt_raw = self.train_dataset.tokenizer.decode(torch.cat([y_rhs[idx,0:1],y_rhs[idx,2:3]],0))
+                inverse_input = self.train_dataset.tokenizer.decode(x_lhs[idx,1:2])
+                inverse_answers = self.out_to_inputs[int(inverse_input)]
+                y_hat_ = torch.max(y_hat[idx], dim=-2).indices  # batchsize x num_rhs_tokens
+                y_hat_raw = self.train_dataset.tokenizer.decode(torch.cat([y_hat_[0:1],y_hat_[2:3]],0))
+                try:
+                    y_hat_raw = tuple([int(val) for val in y_hat_raw.split(" ") if is_int(val)])
+                except Exception:
+                    st()
+                positives = y_hat_raw in inverse_answers
+                true_positives.append(positives)
+            acc = (sum(true_positives)/len(true_positives)) * 100  # shape: batchsize
+            acc = torch.tensor(acc)
+        else:
+            with torch.no_grad():
+                acc = self._accuracy(y_hat_rhs, y_rhs)
+                if reduction == "mean":
+                    acc = acc.mean()
 
         """
         device = self.transformer.embedding.weight.device

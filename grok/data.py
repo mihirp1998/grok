@@ -1,9 +1,10 @@
 import itertools
 import math
 import os
+from collections import defaultdict
 import sys
 import random
-import primefac
+# import primefac
 
 import torch
 from torch import Tensor, LongTensor
@@ -286,12 +287,14 @@ class ArithmeticDataset:
 
         assert (0 < train_pct) and (train_pct < 100)
         ds_name = cls.get_dsname(operator, operand_length)
-        eqs, ip_out_map = cls.make_data(operator, operand_length, hparams=hparams)
+        eqs, ip_out_map, out_to_inputs = cls.make_data(operator, operand_length, hparams=hparams)
 
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
         train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator, max_context_len=max_context_len, hparams=hparams)
         val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator, max_context_len=max_context_len, hparams=hparams)
-        return train_ds, val_ds, ip_out_map
+        # st()
+        
+        return train_ds, val_ds, ip_out_map, out_to_inputs
 
 
 
@@ -326,6 +329,7 @@ class ArithmeticDataset:
         self.train = train
         # st()
         if isinstance(data, list):
+            # st()
             self.data = self.tokenizer.encode(data)
         else:
             self.data = data
@@ -347,6 +351,7 @@ class ArithmeticDataset:
     @classmethod
     def _make_binary_operation_data(cls, operator: str, operands=None, hparams=None) -> List[str]:
         ip_out_map = {}
+        out_to_inputs = defaultdict(lambda: []) 
         if operator == "s5":
             operands = operands or list(range(5))
             elems = map(np.array, itertools.permutations(operands))
@@ -400,11 +405,14 @@ class ArithmeticDataset:
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
             eqs.append([eq,invert_eq])
+            # st()
+            out_to_inputs[c].append((a,b))
+            ip_out_map[(a,b)] = c
             # ip_out_map[(tuple(a.tolist()), tuple(b.tolist()))] = tuple(c)
 
         # if operator == "s5":
         #     print("eqs", eqs)
-        return eqs, ip_out_map
+        return eqs, ip_out_map, out_to_inputs
 
     # @staticmethod
     # def _render_unop_example(operator, lhs, rhs):
@@ -594,10 +602,11 @@ class ArithmeticDataset:
 
 
         if operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
-            data, ip_out_map = cls._make_binary_operation_data(operator, hparams=hparams)
+            data, ip_out_map, out_to_inputs = cls._make_binary_operation_data(operator, hparams=hparams)
         else:
             # st()
-            data, ip_out_map = cls._make_unary_operation_data(operator, operands, hparams=hparams)
+            
+            data, ip_out_map, out_to_inputs = cls._make_unary_operation_data(operator, operands, hparams=hparams)
         # st()
         rng = np.random.RandomState(seed=seed)
         if shuffle:
@@ -612,8 +621,9 @@ class ArithmeticDataset:
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
         # st()
         data = [[EOS_TOKEN + " " + eq[0] + " " + EOS_TOKEN,EOS_TOKEN + " " + eq[1] + " " + EOS_TOKEN] for eq in data]
+        
         # st()
-        return data, ip_out_map
+        return data, ip_out_map,out_to_inputs
 
     # @classmethod
     # def create_data_file(

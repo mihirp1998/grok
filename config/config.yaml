@@ -1,6 +1,6 @@
 defaults:
   - _self_  # Override values within this file with values in selected files.
-  - exp: ff
+  - exp: f
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -9,7 +9,7 @@ random_seed: 42
 embed_style: same
 gpu: 0
 max_steps: 25000 # 000
-project_name: grok_m
+project_name: grok_m1
 batchsize: 0
 n_layers: 2
 n_heads: 4
