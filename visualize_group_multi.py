@@ -16,7 +16,7 @@ import numpy as np
 import argparse
 
 MODE2NAME = {
-    'f': 'AdamW',
+    'f': 'Multi-Task',
     'ff': 'Ours',
     'r': 'Reverse',
     'smr': 'Semi-Mid-Reverse',
@@ -83,7 +83,7 @@ def visualize_group(group_name, split, metric='val_accuracy'):
     operations = os.listdir(group_path)
     operations = [o for o in operations if os.path.isdir(os.path.join(group_path, o))]
     index_val = 0
-    rows,cols = (5,4)
+    rows,cols = (3,3)
     fig,ax=plt.subplots(rows,cols,figsize=(rows*4,cols*3), dpi=250)
     for i in range(rows):
         for j in range(cols):
@@ -92,6 +92,9 @@ def visualize_group(group_name, split, metric='val_accuracy'):
             else:
                 o = operations[index_val]
                 operation_name = o.split('_')[1]
+                if operation_name == '':
+                    operation_name = "/"
+                # st()
                 operation_path = os.path.join(group_path, o)
                 files = [os.path.join(operation_path, file) for file in os.listdir(operation_path)] + [os.path.join(operation_path.replace('m17','m18'), file) for file in os.listdir(operation_path.replace('m17','m18'))]
                 files = [f for f in files if f.endswith('.csv')]
@@ -102,6 +105,7 @@ def visualize_group(group_name, split, metric='val_accuracy'):
                     mode = name.split('_')[1]
                     color = MODE2COLOR[mode]
                     df = pd.read_csv( f)
+                    # st()
                     ax[i,j].plot(df['steps'], df[metric], label=MODE2NAME[mode], c= color)
                 ax[i,j].set_xscale('log')  # Set x-axis to logarithmic scale
                 # ax[i,j].set_xlabel('Steps (Log-scale)')
@@ -110,8 +114,8 @@ def visualize_group(group_name, split, metric='val_accuracy'):
                 ax[i,j].legend()
                 ax[i,j].grid()
                 index_val+=1
-    plt.subplots_adjust(wspace=0.2, hspace=0.5)
-    plt.savefig('optim_curves.pdf', bbox_inches='tight')
+    plt.subplots_adjust(wspace=0.3, hspace=0.5)
+    plt.savefig('multitask.pdf', bbox_inches='tight')
     st()
     
     # for o in operations:

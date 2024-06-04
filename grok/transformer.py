@@ -414,7 +414,7 @@ class Transformer(nn.Module):
         """parameters:
         x:  (rank-1 tensor) vocab indices of decoder input token
                      sequence"""
-
+        # st()
         # Make sure sampling inputs are on the correct device
         x = x.to(self.embedding.weight.device)
 
@@ -434,7 +434,7 @@ class Transformer(nn.Module):
 
             y_hat_gt = torch.nn.functional.one_hot(cc_dict['y_rhs'],self.embedding.weight.shape[0]).float()
 
-            if self.operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","interval_sorting","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11"]:
+            if self.operator not in ["sort", "reverse", "copy","pfactor","2x","x**3","2x+1", "interleaved_halves", "reverse_pool", "k_shift", "random_swaps", "idx_add","caesarcipher_permutev1","caesarcipher","permutev1","permutev2","permutev3","strdeletev1","strdeletev2","pfactor","2x","x**3","2x+1","x+11", 'interval_sorting']:
                 # default
                 y_hat_ = cc_dict['y_hat_rhs'].softmax(1)[:,:,0][:,None,:]
                 data = torch.cat([eos_token_, y_hat_, eq_token_, x_lhs_, eos_token_], dim=1)

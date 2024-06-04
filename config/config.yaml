@@ -3,13 +3,13 @@ defaults:
   - exp: ff
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
-
+inverse_mode: False
 debug: False
 random_seed: 42
 embed_style: same
 gpu: 0
 max_steps: 25000 # 000
-project_name: grok_m
+project_name: grok_m1
 batchsize: 0
 n_layers: 2
 n_heads: 4
@@ -23,6 +23,7 @@ max_context_len: 50
 math_operator: "+"
 val_batchify: False
 f_coef: 1.0
+slurm_id: -1
 multi_task: False
 math_operator_2: "-"
 multi_coef: 1.0
@@ -30,7 +31,7 @@ tta_coef: 1.0
 inv_coef: 1.0
 cc_coef: 1.0
 save_checkpoints: False
-image_vis_epoch_freq: 20
+image_vis_epoch_freq: 10
 operand_length: 1
 train_data_pct: 80
 warmup_steps: 10
@@ -52,7 +53,13 @@ d_key: -1
 checkpoint_path: None
 data_list_len: 7
 k: 3
-plot_pca_last_layer: False
+visualize: False
+do_four: False
+grad_sim: False
+feat_viz: False
+pca_2d: False
+pca: False
+all_vis: False
 
 
 

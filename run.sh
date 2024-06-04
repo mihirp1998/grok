@@ -138,3 +138,21 @@ python main.py  +hydra/launcher=grogu  math_operator=pfactor,x**3 train_data_pct
 
 python main.py  +hydra/launcher=grogu  math_operator=pfactor,x**3 train_data_pct=50 exp=ff max_context_len=100 group=m19 -m
 +hydra/launcher=matrix  -m
+
+
+
+
+python main.py  +hydra/launcher=matrix  math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+- train_data_pct=20 exp=ff group=m26 -m
+python main.py  +hydra/launcher=matrix  math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+- train_data_pct=40 exp=f group=m26 -m
+
+
+python main.py  +hydra/launcher=grogu  math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+- train_data_pct=20 exp=f group=m26 -m
+python main.py  +hydra/launcher=grogu  math_operator=+,s5,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+- train_data_pct=40 exp=ff group=m26 -m
+
+
+
+python main.py exp=f math_operator=+,/,**3+,+-,**2+,-,* math_operator_2=x**3+x*y**2+y_mod_97 multi_task=True train_data_pct=50 visualize=True save_activations=True group=multi3 +hydra/launcher=grogu -m 
+
+python main.py exp=ff math_operator=+,/,**3+,+-,**2+,-,* train_data_pct=50 visualize=True save_activations=True group=multi3 +hydra/launcher=matrix -m 
+
+python main.py exp=inv math_operator=+,/,**3+,+-,**2+,-,*,/,**2+,**3+,x**2+y**2_mod_97,x**2+y**2+x*y_mod_97,x**2+y**2+x*y+x_mod_97,x**3+x*y_mod_97,x**3+x*y**2+y_mod_97,s5conj,s5aba,+*,+- group=grok_inv +hydra/launcher=grogu -m 
