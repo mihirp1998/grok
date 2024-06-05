@@ -69,6 +69,7 @@ MINUS_TOKEN = "-"
 PLUS_TOKEN = "+"
 EQ_TOKEN = "="
 MODULUS = 97
+# MODULUS = 10
 NUMS = list(range(MODULUS))
 MODULUS_BIJECTIONS = 10
 NUMS_BIJECTIONS = list(range(MODULUS_BIJECTIONS))
@@ -292,7 +293,7 @@ class ArithmeticDataset:
         assert (0 < train_pct) and (train_pct < 100)
         ds_name = cls.get_dsname(operator, operand_length)
         eqs, ip_out_map, out_to_inputs = cls.make_data(operator, operand_length, hparams=hparams)
-
+        # st()
         train_rows, _ = cls.calc_split_len(train_pct, len(eqs))
         train_ds = cls(ds_name, eqs[:train_rows], train=True, data_dir=data_dir, operator=operator, max_context_len=max_context_len, hparams=hparams)
         val_ds = cls(ds_name, eqs[train_rows:], train=False, data_dir=data_dir, operator=operator, max_context_len=max_context_len, hparams=hparams)
@@ -411,7 +412,7 @@ class ArithmeticDataset:
             invert_eq = " ".join(map(render, [c, "=", a, operator, b ]))
             eqs.append([eq,invert_eq])
             # st()
-            out_to_inputs[c].append((a,b))
+            out_to_inputs[f'{c}'].append(f'{a} {b}')
             ip_out_map[(a,b)] = c
             # ip_out_map[(tuple(a.tolist()), tuple(b.tolist()))] = tuple(c)
 

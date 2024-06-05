@@ -468,15 +468,24 @@ class TrainableTransformer(LightningModule):
             for idx in range(y_rhs.shape[0]):
                 y_gt_raw = self.train_dataset.tokenizer.decode(torch.cat([y_rhs[idx,0:1],y_rhs[idx,2:3]],0))
                 inverse_input = self.train_dataset.tokenizer.decode(x_lhs[idx,1:2])
-                inverse_answers = self.out_to_inputs[int(inverse_input)]
-                y_hat_ = torch.max(y_hat[idx], dim=-2).indices  # batchsize x num_rhs_tokens
+                inverse_answers = self.out_to_inputs[inverse_input]
+                y_hat_ = torch.max(y_hat_rhs[idx], dim=-2).indices  # batchsize x num_rhs_tokens
                 y_hat_raw = self.train_dataset.tokenizer.decode(torch.cat([y_hat_[0:1],y_hat_[2:3]],0))
-                try:
-                    y_hat_raw = tuple([int(val) for val in y_hat_raw.split(" ") if is_int(val)])
-                except Exception:
-                    st()
-                positives = y_hat_raw in inverse_answers
+                if idx < 3:
+                    print('inverse_input', inverse_input,'y_gt_raw', y_gt_raw,'y_hat_raw', y_hat_raw)
+                # st()
+                y_hat_raw = tuple([val for val in y_hat_raw.split(" ")])
+                
+                
+                first_args = [answer.split(' ')[0] for answer in inverse_answers]
+                second_args_conditioned_on_first = [answer.split(' ')[1] for answer in inverse_answers if answer.split(' ')[0] == y_gt_raw.split(' ')[0]]
+                # st()
+                first_args_correct = y_hat_raw[0] in  first_args
+                second_args_correct = y_hat_raw[1] in  second_args_conditioned_on_first
+                
+                positives = first_args_correct and second_args_correct
                 true_positives.append(positives)
+            # st()
             acc = (sum(true_positives)/len(true_positives)) * 100  # shape: batchsize
             acc = torch.tensor(acc)
         else:
