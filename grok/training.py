@@ -1479,26 +1479,43 @@ class TrainableTransformer(LightningModule):
             #     # st()
             #     exit()
         # save when self.trainer.global_step is a multiple of 1000
+        
+        if validation_is_real and self.hparams.stop_when_100:
+            grokked = (accuracy == 100.0) and (tr_acc == 100.0)
+            # st()
+        else:
+            grokked = False
+            # st()
+            
 
         self.validation_step_outputs.clear()
-        # st()
+        
         # save a checkpoint if the epoch is a power of 2
         if self.hparams.save_checkpoints:
             if (
                 self.current_epoch > 0
                 and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
                 == self.current_epoch
-            ):  
+            ) or grokked:  
                 checkpoint_path = self.hparams.logdir + f"/checkpoints/{wandb.run.name}"
+                if grokked:
+                    st()
+                    prefix = "_grokked"
+                else:
+                    prefix = ""
+                    
                 # st()
                 os.makedirs(checkpoint_path, exist_ok=True)
                 self.trainer.save_checkpoint(
                     os.path.join(
                         checkpoint_path,
-                        "epoch_" + str(self.current_epoch) + ".ckpt",
+                        "epoch_" + str(self.current_epoch) + prefix + ".ckpt",
                     )
                 )
             # st()
+            if grokked:
+                wandb.run.finish()
+                exit()
 
         if validation_is_real:
             return logs

@@ -17,8 +17,7 @@ import os
 
 @hydra.main(config_path="config", config_name="config")
 def main(args: DictConfig):
-    # st(
-    wandb.login(key='899662853ead8246d39f962194401e222ad8517a', relogin=True)
+    os.environ['WANDB_API_KEY'] = '899662853ead8246d39f962194401e222ad8517a'
     print(args)
     args.slurm_id = os.environ.get("SLURM_JOB_ID", None)
     args.logdir = os.path.abspath(args.logdir)
