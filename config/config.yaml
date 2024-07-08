@@ -5,6 +5,7 @@ defaults:
   - override hydra/job_logging: disabled
 inverse_mode: False
 debug: False
+joint_mode: False
 random_seed: 42
 embed_style: same
 gpu: 0
